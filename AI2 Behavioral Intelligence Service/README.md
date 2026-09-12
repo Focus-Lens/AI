@@ -100,28 +100,27 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
 
 ## 4. Project Structure
 
-```text
-AI2/
-├── docs/                   # Full methodology documentation
-│   ├── adaptive_decision.md
-│   ├── AI_Behavioral_Signals_Contract2.md
-│   ├── api_contract.md
-│   ├── feature_thresholds.md
-│   ├── focus_score.md
-│   ├── state_detection.md
-│   └── test_scenarios.md
-├── tests/
-│   └── test_scenarios.py   # Automated regression tests
-├── adaptive_decision.py
-├── api.py                  # FastAPI HTTP layer
-├── data_models.py
-├── feature_extraction.py
-├── focus_score.py
-├── pipeline.py
-├── state_detection.py
+```
+ai2_service/
+├── data_models.py          # SessionPayload, Section, MicroChallenge (data classes + from_dict parsing)
+├── feature_extraction.py   # Raw signals -> classified features (thresholds)
+├── state_detection.py      # Classified features -> learning state + confidence
+├── focus_score.py          # Features + state -> 0-100 focus score
+├── adaptive_decision.py    # (state, score) -> recommended action
+├── pipeline.py             # Ties the above together per section / per session
+├── api.py                  # FastAPI HTTP layer — the only entry point Backend calls
+├── requirements.txt
 ├── .gitignore
-├── README.md
-└── requirements.txt
+├── tests/
+│   └── test_scenarios.py   # Automated regression tests for all states + edge cases
+└── docs/                    # Full methodology documentation (see below)
+    ├── data_dictionary.md
+    ├── feature_thresholds.md
+    ├── state_detection.md
+    ├── focus_score.md
+    ├── adaptive_decision.md
+    ├── api_contract.md
+    └── test_scenarios.md
 ```
 
 ## 5. Methodology Documentation
