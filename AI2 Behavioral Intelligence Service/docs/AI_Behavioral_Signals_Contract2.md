@@ -16,7 +16,6 @@
       "section_start_time": 1694123456789,
       "section_end_time": 1694123501789,
       "time_spent_seconds": 45.0,
-      "reading_speed_wpm": 180.5,
       "scroll_speed_avg_px_per_sec": 220.0,
       "scroll_direction_changes": 3,
       "content_progression_pct": 90.0,
@@ -62,7 +61,6 @@ Represents one continuous or aggregated visit record for a content section withi
 | `section_start_time` | integer (unix ms) | Yes | — | First entry timestamp into this section |
 | `section_end_time` | integer (unix ms) | Yes | — | Last exit timestamp from this section |
 | `time_spent_seconds` | float | Yes | seconds, ≥ 0 | Total accumulated time spent in this section (sum across all visits, not just last one) |
-| `reading_speed_wpm` | float | Yes | words/minute, ≥ 0 | Average reading speed = (words read ÷ time spent in minutes) |
 | `scroll_speed_avg_px_per_sec` | float | Yes | pixels/second, ≥ 0 | Average scroll velocity across the section. **Raw number, not a label** |
 | `scroll_direction_changes` | integer | Yes | count, ≥ 0 | Number of times scroll direction flipped (down→up or up→down). Used to detect erratic/hesitant scrolling |
 | `content_progression_pct` | float | Yes | 0–100 | Max scroll/content depth reached in the section |

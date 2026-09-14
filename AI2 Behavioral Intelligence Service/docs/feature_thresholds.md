@@ -16,23 +16,7 @@
 
 ---
 
-## 1. Reading Speed — `classify_reading_speed(wpm)`
-
-Input: `reading_speed_wpm` (float)
-Content is confirmed to be **English only** — no language branching needed.
-
-| Range (WPM) | Category |
-|---|---|
-| < 100 | `VERY_SLOW` |
-| 100 – 250 | `NORMAL` |
-| 250 – 400 | `FAST` |
-| > 400 | `VERY_FAST` |
-
-> Note: if the product later introduces non-English or mixed content, this function will need a `content_language` parameter again — see project history for the Arabic/mixed threshold values that were drafted and then dropped.
-
----
-
-## 2. Scroll Speed — `classify_scroll_speed(px_per_sec)`
+## 1. Scroll Speed — `classify_scroll_speed(px_per_sec)`
 
 Input: `scroll_speed_avg_px_per_sec` (float)
 **Status: PLACEHOLDER** — pending confirmation from Frontend on unit (raw px vs. density-independent dp). Do not finalize until Data Dictionary Open Point #4 is resolved.
@@ -45,7 +29,7 @@ Input: `scroll_speed_avg_px_per_sec` (float)
 
 ---
 
-## 3. Scroll Pattern — `classify_scroll_pattern(direction_changes, time_spent_seconds)`
+## 2. Scroll Pattern — `classify_scroll_pattern(direction_changes, time_spent_seconds)`
 
 Derived rate:
 ```
@@ -60,7 +44,7 @@ direction_change_rate = direction_changes / (time_spent_seconds / 60)
 
 ---
 
-## 4. Content Progression — `classify_progression(progression_pct)`
+## 3. Content Progression — `classify_progression(progression_pct)`
 
 Input: `content_progression_pct` (float, 0–100)
 
@@ -72,7 +56,7 @@ Input: `content_progression_pct` (float, 0–100)
 
 ---
 
-## 5. Section Revisit — `classify_revisit(revisit_count)`
+## 4. Section Revisit — `classify_revisit(revisit_count)`
 
 Input: `section_revisit_count` (int)
 
@@ -85,7 +69,7 @@ Input: `section_revisit_count` (int)
 
 ---
 
-## 6. Interaction Rate — `classify_interaction(interaction_count, time_spent_seconds)`
+## 5. Interaction Rate — `classify_interaction(interaction_count, time_spent_seconds)`
 
 Derived rate:
 ```
@@ -101,7 +85,7 @@ interaction_rate = interaction_count / (time_spent_seconds / 60)
 
 ---
 
-## 7. Micro-Challenge Accuracy — `classify_mcq_accuracy(correct_count, total_count)`
+## 6. Micro-Challenge Accuracy — `classify_mcq_accuracy(correct_count, total_count)`
 
 Derived rate:
 ```
@@ -116,7 +100,7 @@ mcq_accuracy = correct_count / total_count   (skip if total_count == 0)
 
 ---
 
-## 8. Micro-Challenge Response Time — `classify_response_time(response_time_seconds)`
+## 7. Micro-Challenge Response Time — `classify_response_time(response_time_seconds)`
 
 Input: `response_time_seconds` (float, per question — average if multiple)
 
@@ -128,7 +112,7 @@ Input: `response_time_seconds` (float, per question — average if multiple)
 
 ---
 
-## 9. Background / Distraction — `classify_disengagement(background_count, total_background_seconds)`
+## 8. Background / Distraction — `classify_disengagement(background_count, total_background_seconds)`
 
 | Condition | Category |
 |---|---|
@@ -138,7 +122,7 @@ Input: `response_time_seconds` (float, per question — average if multiple)
 
 ---
 
-## 10. Output of This Layer (Feature Vector)
+## 9. Output of This Layer (Feature Vector)
 
 Once every signal is classified, the output for one section should look like this — this is what feeds into the **Learning-State Detection** layer (next step):
 
@@ -162,7 +146,7 @@ Once every signal is classified, the output for one section should look like thi
 
 ---
 
-## 11. Open Points
+## 10. Open Points
 
 - [ ] Scroll speed thresholds are placeholders pending unit confirmation (px vs dp) from Frontend.
 - [ ] All numeric thresholds above are initial estimates — must be recalibrated after collecting a baseline of real session data (recommend revisiting after first 2–4 weeks of production data).

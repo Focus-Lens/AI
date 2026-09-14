@@ -1,10 +1,5 @@
 """
 Automated regression tests, translated from test_scenarios.md.
-
-NOTE: while writing these, two hand-calculation mistakes were found in
-test_scenarios.md Scenario 1 (scroll_pattern and interaction rate math).
-The code below follows feature_thresholds.md exactly (the source of truth);
-test_scenarios.md should be corrected to match — see conversation notes.
 """
 
 import sys
@@ -24,7 +19,6 @@ def make_section(**overrides) -> Section:
         "concept_id": "C_TEST",
         "section_start_time": 1700000000000,
         "section_end_time": 1700000060000,
-        "reading_speed_wpm": 200,
         "time_spent_seconds": 60,
         "scroll_speed_avg_px_per_sec": 200,
         "scroll_direction_changes": 1,
@@ -47,7 +41,6 @@ def make_section(**overrides) -> Section:
 
 def test_scenario_1_content_difficulty():
     section = make_section(
-        reading_speed_wpm=70,
         time_spent_seconds=120,
         scroll_direction_changes=8,
         content_progression_pct=95,
@@ -58,7 +51,6 @@ def test_scenario_1_content_difficulty():
     result = analyze_section(section)
 
     assert result["state"] == "CONTENT_DIFFICULTY"
-    assert result["features_used"]["reading_speed"] == "VERY_SLOW"
     assert result["features_used"]["revisit"] == "MODERATE"
     assert result["recommendedAction"] in ("SHOW_EXPLANATION", "SLOW_PACE", "REASSESS")
 
@@ -69,7 +61,6 @@ def test_scenario_1_content_difficulty():
 
 def test_scenario_2_skimming():
     section = make_section(
-        reading_speed_wpm=450,
         time_spent_seconds=20,
         scroll_speed_avg_px_per_sec=500,
         scroll_direction_changes=0,
@@ -81,7 +72,6 @@ def test_scenario_2_skimming():
     result = analyze_section(section)
 
     assert result["state"] == "SKIMMING"
-    assert result["features_used"]["reading_speed"] == "VERY_FAST"
     assert result["features_used"]["mcq_accuracy"] == "LOW"
 
 
@@ -91,7 +81,6 @@ def test_scenario_2_skimming():
 
 def test_scenario_3_weak_understanding():
     section = make_section(
-        reading_speed_wpm=180,
         time_spent_seconds=90,
         scroll_direction_changes=1,
         content_progression_pct=100,
@@ -112,7 +101,6 @@ def test_scenario_3_weak_understanding():
 
 def test_scenario_4_distraction():
     section = make_section(
-        reading_speed_wpm=150,
         time_spent_seconds=180,
         scroll_direction_changes=1,
         content_progression_pct=30,
@@ -126,7 +114,6 @@ def test_scenario_4_distraction():
 
     assert result["state"] == "DISTRACTION_DISENGAGEMENT"
     assert result["mcq_data_available"] is False
-    # confirms the boundary logic in adaptive_decision.md near the 50-point split
     assert result["recommendedAction"] in ("SLOW_PACE", "SUGGEST_BREAK")
 
 
@@ -136,7 +123,6 @@ def test_scenario_4_distraction():
 
 def test_scenario_5_normal_focused():
     section = make_section(
-        reading_speed_wpm=200,
         time_spent_seconds=100,
         scroll_direction_changes=1,
         content_progression_pct=100,
@@ -157,13 +143,12 @@ def test_scenario_5_normal_focused():
 
 def test_edge_case_a_no_mcq_does_not_crash():
     section = make_section(
-        reading_speed_wpm=70,
         time_spent_seconds=120,
         scroll_direction_changes=8,
         section_revisit_count=3,
         micro_challenges=[],  # explicitly empty
     )
-    result = analyze_section(section)  # should not raise
+    result = analyze_section(section)
 
     assert result["mcq_data_available"] is False
     assert result["features_used"]["mcq_accuracy"] is None
@@ -181,10 +166,11 @@ def test_edge_case_b_zero_time_spent_does_not_crash():
         interaction_count=0,
         scroll_direction_changes=0,
     )
-    result = analyze_section(section)  # should not raise ZeroDivisionError
+    result = analyze_section(section)
 
     assert result["features_used"]["scroll_pattern"] == "STABLE"
     assert result["features_used"]["interaction"] == "NONE"
+
 
 # ---------------------------------------------------------------------------
 # Edge Case D — Malformed section (missing required field) in a full session
@@ -203,7 +189,6 @@ def test_edge_case_d_partial_failure_isolated():
                 "section_start_time": 1700000000000,
                 "section_end_time": 1700000060000,
                 "time_spent_seconds": 60,
-                "reading_speed_wpm": 200,
                 "scroll_speed_avg_px_per_sec": 200,
                 "scroll_direction_changes": 1,
                 "content_progression_pct": 100,
@@ -217,8 +202,7 @@ def test_edge_case_d_partial_failure_isolated():
     
     session = SessionPayload.from_dict(session_data)
     
-    # محاكاة تلف بيانات قسم بإلغاء حقل إجباري منه
-    del session.sections[0].__dict__["reading_speed_wpm"]
+    del session.sections[0].__dict__["time_spent_seconds"]
 
     response = analyze_session(session)
 

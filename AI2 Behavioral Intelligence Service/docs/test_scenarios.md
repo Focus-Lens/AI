@@ -14,8 +14,8 @@
 
 ```json
 {
-  "reading_speed_wpm": 70,
   "time_spent_seconds": 120,
+  "scroll_speed_avg_px_per_sec": 150,
   "scroll_direction_changes": 8,
   "content_progression_pct": 95,
   "section_revisit_count": 3,
@@ -36,7 +36,6 @@
 
 ```json
 {
-  "reading_speed_wpm": 450,
   "time_spent_seconds": 20,
   "scroll_speed_avg_px_per_sec": 500,
   "scroll_direction_changes": 0,
@@ -59,8 +58,8 @@
 
 ```json
 {
-  "reading_speed_wpm": 180,
   "time_spent_seconds": 90,
+  "scroll_speed_avg_px_per_sec": 200,
   "scroll_direction_changes": 1,
   "content_progression_pct": 100,
   "section_revisit_count": 0,
@@ -81,8 +80,8 @@
 
 ```json
 {
-  "reading_speed_wpm": 150,
   "time_spent_seconds": 180,
+  "scroll_speed_avg_px_per_sec": 150,
   "scroll_direction_changes": 1,
   "content_progression_pct": 30,
   "section_revisit_count": 0,
@@ -103,8 +102,8 @@
 
 ```json
 {
-  "reading_speed_wpm": 200,
   "time_spent_seconds": 100,
+  "scroll_speed_avg_px_per_sec": 200,
   "scroll_direction_changes": 1,
   "content_progression_pct": 100,
   "section_revisit_count": 0,
