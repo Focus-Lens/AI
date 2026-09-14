@@ -39,7 +39,7 @@ class SectionIn(BaseModel):
     section_start_time: int = 0
     section_end_time: int = 0
     time_spent_seconds: float = Field(ge=0)
-    reading_speed_wpm: float = Field(ge=0)
+    # reading_speed_wpm: float = Field(ge=0)                  # DELETED!
     scroll_speed_avg_px_per_sec: float = Field(ge=0, default=0.0)
     scroll_direction_changes: int = Field(ge=0, default=0)
     content_progression_pct: float = Field(ge=0, le=100)

@@ -30,7 +30,7 @@ class Section:
     section_start_time: int
     section_end_time: int
     time_spent_seconds: float
-    reading_speed_wpm: float
+    # reading_speed_wpm: float                     # DELETED!
     scroll_speed_avg_px_per_sec: float
     scroll_direction_changes: int
     content_progression_pct: float
@@ -56,7 +56,7 @@ class Section:
             section_start_time=data.get("section_start_time", 0),
             section_end_time=data.get("section_end_time", 0),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
-            reading_speed_wpm=data.get("reading_speed_wpm", 0.0),
+            # reading_speed_wpm=data.get("reading_speed_wpm", 0.0),                # DELETED!
             scroll_speed_avg_px_per_sec=data.get("scroll_speed_avg_px_per_sec", 0.0),
             scroll_direction_changes=data.get("scroll_direction_changes", 0),
             content_progression_pct=data.get("content_progression_pct", 0.0),

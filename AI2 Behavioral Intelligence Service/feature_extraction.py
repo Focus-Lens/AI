@@ -15,15 +15,15 @@ from data_models import Section
 # ---------------------------------------------------------------------------
 # 1. Reading speed (English-only content — see feature_thresholds.md §1)
 # ---------------------------------------------------------------------------
-def classify_reading_speed(wpm: float) -> str:
-    if wpm < 100:
-        return "VERY_SLOW"
-    elif wpm <= 250:
-        return "NORMAL"
-    elif wpm <= 400:
-        return "FAST"
-    else:
-        return "VERY_FAST"
+# def classify_reading_speed(wpm: float) -> str:                                        # DELETED!
+#     if wpm < 100:
+#         return "VERY_SLOW"
+#     elif wpm <= 250:
+#         return "NORMAL"
+#     elif wpm <= 400:
+#         return "FAST"
+#     else:
+#         return "VERY_FAST"
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ def extract_features(section: Section) -> dict[str, str | None]:
     )
 
     return {
-        "reading_speed": classify_reading_speed(section.reading_speed_wpm),
+        # "reading_speed": classify_reading_speed(section.reading_speed_wpm),            # DELETED!
         "scroll_speed": classify_scroll_speed(section.scroll_speed_avg_px_per_sec),
         "scroll_pattern": classify_scroll_pattern(
             section.scroll_direction_changes, section.time_spent_seconds

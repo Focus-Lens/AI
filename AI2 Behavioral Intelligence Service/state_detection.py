@@ -32,10 +32,10 @@ def _score(true_weights: list[int], applicable_weights: list[int]) -> float:
 
 def score_content_difficulty(features: dict, has_mcq: bool) -> float:
     true_w = []
-    applicable_w = [3, 3, 2]  # reading_speed, revisit, scroll_pattern always applicable
+    applicable_w = [3, 2]  #  revisit, scroll_pattern always applicable
 
-    if features["reading_speed"] == "VERY_SLOW":
-        true_w.append(3)
+    # if features["reading_speed"] == "VERY_SLOW":                  # DELETED!
+    #     true_w.append(3)
     if features["revisit"] in ("MODERATE", "HIGH"):
         true_w.append(3)
     if features["scroll_pattern"] == "ERRATIC":
@@ -51,10 +51,10 @@ def score_content_difficulty(features: dict, has_mcq: bool) -> float:
 
 def score_skimming(features: dict, has_mcq: bool) -> float:
     true_w = []
-    applicable_w = [3, 2]  # reading_speed, scroll_speed always applicable
+    applicable_w = [2]  #  scroll_speed always applicable
 
-    if features["reading_speed"] in ("FAST", "VERY_FAST"):
-        true_w.append(3)
+    # if features["reading_speed"] in ("FAST", "VERY_FAST"):                    # DELETED!
+    #     true_w.append(3)
     if features["scroll_speed"] == "FAST":
         true_w.append(2)
 
@@ -79,10 +79,10 @@ def score_weak_understanding(features: dict, has_mcq: bool) -> float:
         return 0.0
 
     true_w = [3]  # mcq_accuracy == LOW is guaranteed true to reach this point
-    applicable_w = [3, 2, 2, 1, 2]  # mcq_accuracy, reading_speed, revisit, progression, mcq_response_time
+    applicable_w = [3, 2, 1, 2]  # mcq_accuracy, revisit, progression, mcq_response_time
 
-    if features["reading_speed"] == "NORMAL":
-        true_w.append(2)
+    # if features["reading_speed"] == "NORMAL":                                  # DELETED!                                     
+    #     true_w.append(2)
     if features["revisit"] in ("NONE", "LOW"):
         true_w.append(2)
     if features["progression"] == "COMPLETE":
