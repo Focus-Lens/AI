@@ -30,7 +30,6 @@ class Section:
     section_start_time: int
     section_end_time: int
     time_spent_seconds: float
-    # reading_speed_wpm: float                     # DELETED!
     scroll_speed_avg_px_per_sec: float
     scroll_direction_changes: int
     content_progression_pct: float
@@ -56,7 +55,6 @@ class Section:
             section_start_time=data.get("section_start_time", 0),
             section_end_time=data.get("section_end_time", 0),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
-            # reading_speed_wpm=data.get("reading_speed_wpm", 0.0),                # DELETED!
             scroll_speed_avg_px_per_sec=data.get("scroll_speed_avg_px_per_sec", 0.0),
             scroll_direction_changes=data.get("scroll_direction_changes", 0),
             content_progression_pct=data.get("content_progression_pct", 0.0),
@@ -90,9 +88,58 @@ class SessionPayload:
 
 
 # ---------------------------------------------------------------------------
-# Module-level convenience wrapper — same thing as SessionPayload.from_dict(),
-# exposed as a plain function for callers (like api.py) that prefer not to
-# reference the class directly.
+# NEW: Real-time window models (periodic analysis every 5 min)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class WindowHistoryItem:
+    """Summary of a previous window — Backend supplies this so we can
+    compute trends and escalation without persisting state ourselves."""
+    window_index: int
+    focus_score: int
+    state: str
+    dominant_action: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "WindowHistoryItem":
+        return cls(
+            window_index=data["window_index"],
+            focus_score=data["focus_score"],
+            state=data["state"],
+            dominant_action=data["dominant_action"],
+        )
+
+
+@dataclass
+class AnalysisWindow:
+    """One periodic analysis window (every 5 min, or shorter if the
+    student closes the session early). Backend supplies history with
+    each call — service remains otherwise stateless."""
+    user_id: str
+    session_id: str
+    window_index: int
+    window_start: int
+    window_end: int
+    is_final: bool
+    sections: list[Section] = field(default_factory=list)
+    history: list[WindowHistoryItem] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnalysisWindow":
+        return cls(
+            user_id=data["user_id"],
+            session_id=data["session_id"],
+            window_index=data["window_index"],
+            window_start=data["window_start"],
+            window_end=data["window_end"],
+            is_final=data.get("is_final", False),
+            sections=[Section.from_dict(s) for s in data.get("sections", [])],
+            history=[WindowHistoryItem.from_dict(h) for h in data.get("history", [])],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience wrapper
 # ---------------------------------------------------------------------------
 
 def parse_session_payload(data: dict) -> SessionPayload:

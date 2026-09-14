@@ -63,3 +63,32 @@ def compute_focus_score(features: dict, state: str, confidence: float) -> int:
     penalty = state_penalty(state, confidence)
     final = max(0, min(100, b_score - penalty))
     return round(final)
+
+
+# ---------------------------------------------------------------------------
+# NEW: Window-level aggregation (duration-weighted)
+# ---------------------------------------------------------------------------
+
+def weighted_window_score(section_results: list[dict], sections: list) -> int:
+    """
+    Window-level focus score = duration-weighted mean of per-section scores.
+
+    Weight = time_spent_seconds of each section.
+    Fallback: if total time is 0 (student opened and closed instantly),
+    fall back to simple mean to avoid dividing by zero.
+
+    section_results and sections MUST be aligned by index.
+    """
+    if not section_results:
+        return 0
+
+    total_time = sum(s.time_spent_seconds for s in sections)
+
+    if total_time <= 0:
+        return round(sum(r["focusScore"] for r in section_results) / len(section_results))
+
+    weighted_sum = sum(
+        r["focusScore"] * s.time_spent_seconds
+        for r, s in zip(section_results, sections)
+    )
+    return round(weighted_sum / total_time)

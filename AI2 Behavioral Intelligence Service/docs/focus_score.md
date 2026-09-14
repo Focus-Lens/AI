@@ -1,22 +1,33 @@
 # Behavioral Intelligence — Focus Score Methodology
 
-**Version:** 0.1 (Draft — MVP, Rule-Based Weighted Scoring)
-**Owner:** Hossam — AI 
+**Version:** 0.2 (Draft — per-section + weighted window aggregation)
+**Owner:** Hossam — AI
 **Depends on:** `feature_thresholds.md` (classified features), `state_detection.md` (state + confidence)
-**Purpose:** Defines how to compute a single 0–100 Focus Score per section/session. Rule-based, explainable, reproducible — no ML/LLM (per spec 2.4).
+**Purpose:** Defines how to compute a single 0–100 Focus Score. Two granularities now exist:
+
+* **Per-section score** (unchanged from v0.1)
+* **Per-window score** (new — duration-weighted mean of section scores)
+
+Rule-based, explainable, reproducible — no ML/LLM (per spec 2.4).
 
 ---
 
 ## 0. Core Principle
 
-The Focus Score is computed in **two layers**:
+### Per-section score
+
+Computed in **two layers**:
 
 1. **Base Score** — derived directly from classified behavioral features (independent of the detected state). Represents general "behavior quality."
 2. **State Penalty** — an additional deduction driven by the detected Learning State (from `state_detection.md`), scaled by that state's confidence. This keeps the Score and the State consistent with each other (e.g. a `DISTRACTION` state should never coexist with a high score).
 
-```
+```text
 Final Score = clamp(Base Score − State Penalty, 0, 100)
 ```
+
+### Per-window score
+
+A **duration-weighted mean** of the section scores within the window. See §4.
 
 ---
 
@@ -24,40 +35,36 @@ Final Score = clamp(Base Score − State Penalty, 0, 100)
 
 Start at 100. Each classified feature applies a fixed point adjustment.
 
-| Feature | Category | Adjustment |
-|---|---|---|
-| `reading_speed` | VERY_SLOW | −10 |
-| | FAST | −5 |
-| | VERY_FAST | −15 |
-| | NORMAL | 0 |
-| `scroll_pattern` | ERRATIC | −10 |
-| | MODERATE | −3 |
-| | STABLE | 0 |
-| `revisit` | HIGH | −10 |
-| | MODERATE | −5 |
-| | LOW | −2 |
-| | NONE | 0 |
-| `interaction` | NONE | −10 |
-| | LOW | −5 |
-| | NORMAL | 0 |
-| | HIGH | +5 |
-| `mcq_accuracy` *(skip if no MCQ)* | LOW | −15 |
-| | MEDIUM | −5 |
-| | HIGH | +5 |
-| `mcq_response_time` *(skip if no MCQ)* | TOO_FAST | −10 |
-| | SLOW | −5 |
-| | NORMAL | 0 |
-| `disengagement` | SIGNIFICANT_DISTRACTION | −20 |
-| | MILD_DISTRACTION | −8 |
-| | FOCUSED | 0 |
-| `progression` | INCOMPLETE | −10 |
-| | PARTIAL | −3 |
-| | COMPLETE | +5 |
+| Feature                                | Category                  | Adjustment |
+| -------------------------------------- | ------------------------- | ---------: |
+| `scroll_pattern`                       | `ERRATIC`                 |        −15 |
+|                                        | `MODERATE`                |         −5 |
+|                                        | `STABLE`                  |          0 |
+| `revisit`                              | `HIGH`                    |        −15 |
+|                                        | `MODERATE`                |         −8 |
+|                                        | `LOW`                     |         −3 |
+|                                        | `NONE`                    |          0 |
+| `interaction`                          | `NONE`                    |        −15 |
+|                                        | `LOW`                     |         −8 |
+|                                        | `NORMAL`                  |          0 |
+|                                        | `HIGH`                    |         +5 |
+| `mcq_accuracy` *(skip if no MCQ)*      | `LOW`                     |        −20 |
+|                                        | `MEDIUM`                  |         −8 |
+|                                        | `HIGH`                    |         +5 |
+| `mcq_response_time` *(skip if no MCQ)* | `TOO_FAST`                |        −12 |
+|                                        | `SLOW`                    |         −5 |
+|                                        | `NORMAL`                  |          0 |
+| `disengagement`                        | `SIGNIFICANT_DISTRACTION` |        −25 |
+|                                        | `MILD_DISTRACTION`        |        −10 |
+|                                        | `FOCUSED`                 |          0 |
+| `progression`                          | `INCOMPLETE`              |        −15 |
+|                                        | `PARTIAL`                 |         −5 |
+|                                        | `COMPLETE`                |         +5 |
 
 ```python
 def base_score(features: dict) -> float:
     score = 100
-    score += ADJUSTMENTS["reading_speed"][features["reading_speed"]]
+
     score += ADJUSTMENTS["scroll_pattern"][features["scroll_pattern"]]
     score += ADJUSTMENTS["revisit"][features["revisit"]]
     score += ADJUSTMENTS["interaction"][features["interaction"]]
@@ -71,19 +78,21 @@ def base_score(features: dict) -> float:
     return max(0, min(100, score))
 ```
 
+> **Note:** `reading_speed` is no longer a feature (see `feature_thresholds.md` §10). Any prior adjustment for it has been removed.
+
 ---
 
 ## 2. Layer 2 — State Penalty
 
 Driven by the output of `state_detection.md` (`state`, `confidence`).
 
-| State | Max Penalty |
-|---|---|
-| `CONTENT_DIFFICULTY` | −10 |
-| `SKIMMING` | −15 |
-| `WEAK_UNDERSTANDING` | −15 |
-| `DISTRACTION_DISENGAGEMENT` | −20 |
-| `NORMAL_FOCUSED` | 0 |
+| State                       | Max Penalty |
+| --------------------------- | ----------: |
+| `CONTENT_DIFFICULTY`        |         −10 |
+| `SKIMMING`                  |         −15 |
+| `WEAK_UNDERSTANDING`        |         −15 |
+| `DISTRACTION_DISENGAGEMENT` |         −20 |
+| `NORMAL_FOCUSED`            |           0 |
 
 ```python
 MAX_PENALTY = {
@@ -104,10 +113,14 @@ Multiplying by `confidence` ensures a weakly-detected state doesn't crush the sc
 
 ---
 
-## 3. Final Computation
+## 3. Per-Section Final Computation
 
 ```python
-def compute_focus_score(features: dict, state: str, confidence: float) -> int:
+def compute_focus_score(
+    features: dict,
+    state: str,
+    confidence: float
+) -> int:
     b_score = base_score(features)
     penalty = state_penalty(state, confidence)
     final = max(0, min(100, b_score - penalty))
@@ -116,27 +129,98 @@ def compute_focus_score(features: dict, state: str, confidence: float) -> int:
 
 ---
 
-## 4. Worked Example
+## 4. Per-Window Aggregation
 
-Input:
-```
-reading_speed: FAST          → -5
-mcq_accuracy: LOW            → -15
-(all other features neutral) → 0
-State: SKIMMING, confidence: 0.8
+The real-time path (`/ai2/analyze-window`) returns **one** focus score per window, not per section. It is computed as a **duration-weighted mean** of the section scores:
+
+```text
+window_score = Σ (section_score_i × time_spent_i) / Σ time_spent_i
 ```
 
-```
-Base Score = 100 - 5 - 15 = 80
-State Penalty = 15 × 0.8 = 12
-Final Score = 80 - 12 = 68
+**Why weighted by duration?** A 10-second glance at a section should not count as much as a 4-minute engagement. A simple mean would let a trivial section dominate the window verdict.
+
+```python
+def weighted_window_score(
+    section_results: list[dict],
+    sections: list
+) -> int:
+    if not section_results:
+        return 0
+
+    total_time = sum(
+        s.time_spent_seconds
+        for s in sections
+    )
+
+    if total_time <= 0:
+        # Edge case: all sections had zero duration -> simple mean
+        return round(
+            sum(r["focusScore"] for r in section_results)
+            / len(section_results)
+        )
+
+    weighted_sum = sum(
+        r["focusScore"] * s.time_spent_seconds
+        for r, s in zip(section_results, sections)
+    )
+
+    return round(weighted_sum / total_time)
 ```
 
-Matches the example in the spec's section 2.6 (`"focusScore": 68`) — confirms the methodology produces sensible, expected output ranges.
+**Contract:** `section_results` and `sections` MUST be aligned by index. The pipeline guarantees this by only appending to both lists when a section is successfully processed.
+
+**Edge case:** if `total_time <= 0` (all sections have zero duration — e.g. a student who opened the app and immediately closed it), fall back to a simple mean to avoid dividing by zero.
 
 ---
 
-## 5. Output of This Layer
+## 5. Worked Example (per-section)
+
+### Input
+
+```text
+mcq_accuracy: LOW            → -20
+mcq_response_time: TOO_FAST  → -12
+(all other features neutral) → 0
+
+State: SKIMMING
+confidence: 0.8
+```
+
+### Calculation
+
+```text
+Base Score = 100 - 20 - 12 = 68
+State Penalty = 15 × 0.8 = 12
+Final Score = 68 - 12 = 56
+```
+
+The exact number is less important than the behaviour: LOW accuracy + TOO_FAST response consistently produces a score in the "needs intervention" range, which then drives `SHOW_EXPLANATION` from the decision table.
+
+---
+
+## 6. Worked Example (per-window)
+
+Window contains two sections:
+
+| Section | Focus Score | Time Spent |
+| ------- | ----------: | ---------: |
+| A       |          90 |        20s |
+| B       |          40 |       280s |
+
+```text
+window_score = (90 × 20 + 40 × 280) / 300
+             = (1800 + 11200) / 300
+             = 13000 / 300
+             = 43.33 → 43
+```
+
+The short section barely dents the score. This is intentional — the window verdict should reflect where the learner actually spent their time.
+
+---
+
+## 7. Output of This Layer
+
+### Per-section (end-of-session path)
 
 ```json
 {
@@ -144,20 +228,17 @@ Matches the example in the spec's section 2.6 (`"focusScore": 68`) — confirms 
   "concept_id": "C008",
   "state": "SKIMMING",
   "confidence": 0.8,
-  "focusScore": 68
+  "focusScore": 56
 }
 ```
 
-This feeds directly into: **Adaptive Decision** (2.5) — next stage.
+### Per-window (real-time path)
 
----
-
-## 6. Open Points
-
-- [ ] Point adjustments in Layer 1 and max penalties in Layer 2 are initial estimates based on domain reasoning — must be recalibrated once real session data is available.
-- [ ] Consider whether Focus Score should also be aggregated at the **session level** (average/weighted average across all sections), in addition to per-section — needs confirmation with Backend on what granularity is required in the final API contract (2.6).
-- [ ] Consider clamping visibility: should Focus Score ever be shown to the end-user directly, or only used internally for the Adaptive Decision engine? Affects whether extra "friendliness" smoothing is needed (e.g. minimum floor score) — a Product decision, not purely technical.
-
----
-
-*This document is the direct implementation reference for the Focus Score module. Any adjustment/penalty changes must be re-validated against the test scenarios deliverable.*
+```json
+{
+  "window_index": 3,
+  "window_focus_score": 43,
+  "window_state": "CONTENT_DIFFICULTY",
+  "sections_analyzed": 2
+}
+```
