@@ -12,6 +12,8 @@ from focus_score import compute_focus_score, weighted_window_score
 from adaptive_decision import get_recommended_action
 from trend_analysis import (
     compute_trend,
+    compute_understanding_score,
+    compute_understanding_trend,
     consecutive_state_count,
     consecutive_low_score_count,
 )
@@ -98,6 +100,13 @@ def analyze_window(window: AnalysisWindow) -> dict:
     # 3. Duration-weighted window score
     window_score = weighted_window_score(section_results, aligned_sections)
 
+    # 3b. Understanding is based only on MCQ correctness.
+    understanding_score = compute_understanding_score(aligned_sections)
+    history_understanding = [h.understanding_score for h in window.history]
+    understanding_trend = compute_understanding_trend(
+        history_understanding + [understanding_score]
+    )
+
     # 4. Dominant state (most frequent; tie-break by severity)
     state_counts: dict[str, int] = {}
     for r in section_results:
@@ -134,6 +143,8 @@ def analyze_window(window: AnalysisWindow) -> dict:
         "session_id": window.session_id,
         "window_index": window.window_index,
         "window_focus_score": window_score,
+        "window_understanding_score": understanding_score,
+        "understanding_trend": understanding_trend,
         "window_state": dominant_state,
         "recommended_action": final_action,
         "raw_action": raw_action,        # for debugging / logging
@@ -153,6 +164,8 @@ def _empty_window_response(window: AnalysisWindow) -> dict:
         "session_id": window.session_id,
         "window_index": window.window_index,
         "window_focus_score": None,
+        "window_understanding_score": None,
+        "understanding_trend": "STABLE",
         "window_state": "NORMAL_FOCUSED",
         "recommended_action": "CONTINUE",
         "raw_action": "CONTINUE",

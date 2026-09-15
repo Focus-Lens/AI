@@ -5,6 +5,27 @@ across windows triggers a break even if the current score looks fine.
 """
 
 
+def compute_understanding_score(sections: list) -> int | None:
+    # Understanding is based only on MCQ correctness.
+    challenges = [
+        challenge
+        for section in sections
+        for challenge in section.micro_challenges
+    ]
+
+    if not challenges:
+        return None
+
+    correct = sum(1 for challenge in challenges if challenge.is_correct)
+    return round((correct / len(challenges)) * 100)
+
+
+def compute_understanding_trend(scores: list[int | None]) -> str:
+    # Ignore windows that contain no MCQ data.
+    valid_scores = [score for score in scores if score is not None]
+    return compute_trend(valid_scores)
+
+
 def compute_trend(scores: list[int]) -> str:
     """
     Returns IMPROVING / STABLE / DECLINING based on the last few scores.

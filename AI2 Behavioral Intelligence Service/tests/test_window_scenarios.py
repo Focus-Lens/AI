@@ -168,6 +168,90 @@ def test_consecutive_low_score_count_current_ok():
     assert consecutive_low_score_count(history, 80) == 0
 
 
+def test_compute_understanding_score_all_correct():
+    from trend_analysis import compute_understanding_score
+
+    sections = [
+        make_section(micro_challenges=[
+            {"question_id": "Q1", "response_time_seconds": 8, "is_correct": True},
+            {"question_id": "Q2", "response_time_seconds": 9, "is_correct": True},
+        ])
+    ]
+
+    assert compute_understanding_score(sections) == 100
+
+
+def test_compute_understanding_score_mixed_answers():
+    from trend_analysis import compute_understanding_score
+
+    sections = [
+        make_section(micro_challenges=[
+            {"question_id": "Q1", "response_time_seconds": 8, "is_correct": True},
+            {"question_id": "Q2", "response_time_seconds": 9, "is_correct": False},
+            {"question_id": "Q3", "response_time_seconds": 10, "is_correct": False},
+            {"question_id": "Q4", "response_time_seconds": 11, "is_correct": True},
+        ])
+    ]
+
+    assert compute_understanding_score(sections) == 50
+
+
+def test_compute_understanding_score_without_mcqs_returns_none():
+    from trend_analysis import compute_understanding_score
+
+    assert compute_understanding_score([make_section()]) is None
+
+
+def test_compute_understanding_trend_ignores_missing_windows():
+    from trend_analysis import compute_understanding_trend
+
+    assert compute_understanding_trend([None, 50, 60]) == "IMPROVING"
+    assert compute_understanding_trend([100, None, 80]) == "DECLINING"
+    assert compute_understanding_trend([None, None]) == "STABLE"
+
+
+def test_window_includes_understanding_score_and_trend():
+    history = [
+        make_history_item(1, 80, "NORMAL_FOCUSED"),
+        make_history_item(2, 70, "NORMAL_FOCUSED"),
+    ]
+    history[0].understanding_score = 40
+    history[1].understanding_score = 50
+
+    window = make_window(
+        window_index=3,
+        history=history,
+        sections=[make_section(
+            micro_challenges=[
+                {"question_id": "Q1", "response_time_seconds": 8, "is_correct": True},
+                {"question_id": "Q2", "response_time_seconds": 9, "is_correct": True},
+                {"question_id": "Q3", "response_time_seconds": 10, "is_correct": False},
+                {"question_id": "Q4", "response_time_seconds": 11, "is_correct": True},
+                {"question_id": "Q5", "response_time_seconds": 12, "is_correct": True},
+                {"question_id": "Q6", "response_time_seconds": 13, "is_correct": True},
+                {"question_id": "Q7", "response_time_seconds": 14, "is_correct": True},
+                {"question_id": "Q8", "response_time_seconds": 15, "is_correct": True},
+                {"question_id": "Q9", "response_time_seconds": 16, "is_correct": True},
+                {"question_id": "Q10", "response_time_seconds": 17, "is_correct": True},
+            ]
+        )],
+    )
+
+    result = analyze_window(window)
+
+    assert result["window_understanding_score"] == 90
+    assert result["understanding_trend"] == "IMPROVING"
+
+
+def test_empty_window_has_null_understanding_score():
+    window = make_window(sections=[], is_final=True)
+
+    result = analyze_window(window)
+
+    assert result["window_understanding_score"] is None
+    assert result["understanding_trend"] == "STABLE"
+
+
 # ---------------------------------------------------------------------------
 # C. Debounce
 # ---------------------------------------------------------------------------
@@ -358,15 +442,18 @@ def test_window_escalation_consecutive_low_scores():
         make_history_item(1, 40, "CONTENT_DIFFICULTY"),
         make_history_item(2, 40, "CONTENT_DIFFICULTY"),
     ]
-    # Reuse CONTENT_DIFFICULTY section that scores low
+    # Section scores below 50, validating consecutive-low-score escalation.
     window = make_window(
         window_index=3,
         history=history,
         sections=[make_section(
-            time_spent_seconds=120,
-            scroll_direction_changes=8,
-            section_revisit_count=3,
-            content_progression_pct=30,
+            time_spent_seconds=180,
+            scroll_direction_changes=20,
+            section_revisit_count=5,
+            content_progression_pct=10,
+            interaction_count=0,
+            background_count=4,
+            total_background_seconds=60,
         )],
     )
     result = analyze_window(window)
@@ -377,15 +464,16 @@ def test_window_escalation_consecutive_low_scores():
 def test_window_declining_trend_upgrades_slow_pace():
     """Declining trend + CONTENT_DIFFICULTY high score -> SHOW_EXPLANATION."""
     history = [
-        make_history_item(1, 90, "NORMAL_FOCUSED"),
-        make_history_item(2, 80, "NORMAL_FOCUSED"),
+        make_history_item(1, 95, "NORMAL_FOCUSED"),
+        make_history_item(2, 90, "NORMAL_FOCUSED"),
     ]
-    # A section that gives high focus score but is CONTENT_DIFFICULTY
+    # Section scores 77: base action is SLOW_PACE, while 95 -> 90 -> 77
+    # is a genuine declining trend, so it upgrades to SHOW_EXPLANATION.
     window = make_window(
         window_index=3,
         history=history,
         sections=[make_section(
-            time_spent_seconds=120,
+            time_spent_seconds=180,
             scroll_direction_changes=8,
             section_revisit_count=3,
             content_progression_pct=95,

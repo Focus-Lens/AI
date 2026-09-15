@@ -59,6 +59,7 @@ class WindowHistoryItemIn(BaseModel):
     focus_score: int = Field(ge=0, le=100)
     state: str
     dominant_action: str
+    understanding_score: int | None = Field(default=None, ge=0, le=100)
 
 
 class AnalysisWindowIn(BaseModel):

@@ -47,6 +47,8 @@ AI2 Service:
 AI2 returns a SINGLE window result:
 
 - `window_focus_score`
+- `window_understanding_score`
+- `understanding_trend`
 - `window_state`
 - `recommended_action` (or `"SUPPRESSED"`)
 - `raw_action` (for observability)
@@ -202,6 +204,7 @@ Body: AnalysisWindow
 | `focus_score`     | integer (0–100) | The `window_focus_score` AI2 returned for that window                                                     |
 | `state`           | enum            | The `window_state` AI2 returned for that window                                                           |
 | `dominant_action` | enum            | The **raw** action AI2 computed (not the debounced one). Backend decides whether to store raw or emitted. |
+| understanding_score | integer (0-100) OR null | MCQ-based understanding score for the previous window; null when there were no MCQ attempts. |
 
 > **Why does Backend send `history` and not AI2?** AI2 is stateless per request (except debounce). Backend already has a session record; making it the source of truth keeps AI2 horizontally scalable without a shared database.
 
@@ -214,6 +217,8 @@ Body: AnalysisWindow
   "session_id": "sess_88392",
   "window_index": 3,
   "window_focus_score": 68,
+  "window_understanding_score": 50,
+  "understanding_trend": "DECLINING",
   "window_state": "CONTENT_DIFFICULTY",
   "recommended_action": "SHOW_EXPLANATION",
   "raw_action": "SHOW_EXPLANATION",
@@ -245,6 +250,8 @@ Body: AnalysisWindow
 | `session_id`         | string                    | Echoed from request                                                                                                           |
 | `window_index`       | integer                   | Echoed from request                                                                                                           |
 | `window_focus_score` | integer (0–100) OR `null` | Duration-weighted mean of per-section focus scores in this window. `null` if no sections were analysable (see §4.2).          |
+| `window_understanding_score` | integer (0-100) OR null | Percentage of MCQ attempts answered correctly in this window; null when there are no MCQ attempts. |
+| `understanding_trend` | enum | IMPROVING / STABLE / DECLINING, using only non-null understanding scores. |
 | `window_state`       | enum                      | Dominant state of the window (most frequent, severity tie-break).                                                             |
 | `recommended_action` | enum OR `"SUPPRESSED"`    | The action after debounce. If `action_emitted == false`, this is `"SUPPRESSED"` — Backend should **not** show a notification. |
 | `raw_action`         | enum                      | What the decision layer computed before debounce. Always a real action. For observability only.                               |
@@ -263,6 +270,8 @@ If `sections == []` (student closed the app immediately after the previous windo
   "session_id": "sess_88392",
   "window_index": 4,
   "window_focus_score": null,
+  "window_understanding_score": null,
+  "understanding_trend": "STABLE",
   "window_state": "NORMAL_FOCUSED",
   "recommended_action": "CONTINUE",
   "raw_action": "CONTINUE",

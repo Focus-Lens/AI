@@ -99,6 +99,7 @@ class WindowHistoryItem:
     focus_score: int
     state: str
     dominant_action: str
+    understanding_score: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "WindowHistoryItem":
@@ -107,6 +108,7 @@ class WindowHistoryItem:
             focus_score=data["focus_score"],
             state=data["state"],
             dominant_action=data["dominant_action"],
+            understanding_score=data.get("understanding_score"),
         )
 
 
@@ -126,6 +128,11 @@ class AnalysisWindow:
 
     @classmethod
     def from_dict(cls, data: dict) -> "AnalysisWindow":
+        sections = [
+            s if isinstance(s, Section) else Section.from_dict(s)
+            for s in data.get("sections", [])
+        ]
+
         return cls(
             user_id=data["user_id"],
             session_id=data["session_id"],
@@ -133,8 +140,11 @@ class AnalysisWindow:
             window_start=data["window_start"],
             window_end=data["window_end"],
             is_final=data.get("is_final", False),
-            sections=[Section.from_dict(s) for s in data.get("sections", [])],
-            history=[WindowHistoryItem.from_dict(h) for h in data.get("history", [])],
+            sections=sections,
+            history=[
+                h if isinstance(h, WindowHistoryItem) else WindowHistoryItem.from_dict(h)
+                for h in data.get("history", [])
+            ],
         )
 
 
