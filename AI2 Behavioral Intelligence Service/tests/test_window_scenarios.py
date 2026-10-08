@@ -334,29 +334,30 @@ def test_window_single_focused_section():
     assert result["sections_analyzed"] == 1
 
 
-def test_window_dominant_state_is_most_frequent():
-    """Two DISTRACTION sections + one NORMAL -> dominant is DISTRACTION."""
+def test_window_dominant_state_is_longest_total_duration():
+    """P2: dominant state = state with the largest SUM of effective duration.
+    Two DISTRACTION sections (60s effective each = 120s) vs one NORMAL (60s)."""
     window = make_window(
         sections=[
             make_section(
                 section_id="d1",
-                time_spent_seconds=60,
+                time_spent_seconds=120,
                 background_count=4,
-                total_background_seconds=60,
+                total_background_seconds=60,   # effective = 120 - 60 = 60s
                 content_progression_pct=20,
                 interaction_count=0,
             ),
             make_section(
                 section_id="d2",
-                time_spent_seconds=60,
+                time_spent_seconds=120,
                 background_count=4,
-                total_background_seconds=60,
+                total_background_seconds=60,   # effective = 60s
                 content_progression_pct=20,
                 interaction_count=0,
             ),
             make_section(
                 section_id="n1",
-                time_spent_seconds=60,
+                time_spent_seconds=60,         # effective = 60s
                 content_progression_pct=100,
                 interaction_count=3,
                 micro_challenges=[{"question_id": "Q1", "response_time_seconds": 8, "is_correct": True}],
@@ -366,6 +367,31 @@ def test_window_dominant_state_is_most_frequent():
     result = analyze_window(window)
 
     assert result["window_state"] == "DISTRACTION_DISENGAGEMENT"
+
+
+def test_window_short_distracted_section_does_not_beat_long_focused_one():
+    """P2: a 5s distracted section must not outvote a 295s focused one."""
+    window = make_window(
+        sections=[
+            make_section(
+                section_id="short_bad",
+                time_spent_seconds=5,
+                background_count=2,
+                total_background_seconds=0,
+                content_progression_pct=20,
+                interaction_count=0,
+            ),
+            make_section(
+                section_id="long_good",
+                time_spent_seconds=295,
+                content_progression_pct=100,
+                interaction_count=10,
+            ),
+        ],
+    )
+    result = analyze_window(window)
+
+    assert result["window_state"] == "NORMAL_FOCUSED"
 
 
 # ---------------------------------------------------------------------------
