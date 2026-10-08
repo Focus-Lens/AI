@@ -30,7 +30,7 @@ class Section:
     section_start_time: int
     section_end_time: int
     time_spent_seconds: float
-    #now — None means "telemetry not reported", 0 means "reported, genuinely zero"
+    # None means "telemetry not reported", 0 means "reported, genuinely zero"
     scroll_speed_avg_px_per_sec: float | None
     scroll_direction_changes: int | None
     content_progression_pct: float
@@ -40,6 +40,9 @@ class Section:
     total_background_seconds: float | None
     micro_challenges: list[MicroChallenge] = field(default_factory=list)
     tab_hidden_count: int = 0
+    # P2: seconds the learner was actually active in this section
+    # (foreground + recent input). None = not reported by the backend.
+    active_time_seconds: float | None = None
 
     @property
     def has_mcq(self) -> bool:
@@ -65,7 +68,35 @@ class Section:
             total_background_seconds=data.get("total_background_seconds", 0.0),
             micro_challenges=mcqs,
             tab_hidden_count=data.get("tab_hidden_count", 0),
+            active_time_seconds=data.get("active_time_seconds"),
         )
+
+
+def effective_time_seconds(section) -> float:
+    """
+    Single source of truth for "how long did the learner really spend here".
+    Used for the interaction rate, window duration weighting and
+    dominant-state weighting. Nothing else should read time_spent_seconds
+    for those purposes.
+
+    Priority:
+      1. active_time_seconds, if provided (0 is a valid value and is respected)
+      2. else time_spent_seconds - total_background_seconds, if the latter
+         is not None (never below 0)
+      3. else time_spent_seconds
+
+    Result is always >= 0.
+    """
+    active = getattr(section, "active_time_seconds", None)
+    if active is not None:
+        return max(0.0, float(active))
+
+    spent = float(section.time_spent_seconds)
+    background = getattr(section, "total_background_seconds", None)
+    if background is not None:
+        return max(0.0, spent - float(background))
+
+    return max(0.0, spent)
 
 
 @dataclass
@@ -89,17 +120,22 @@ class SessionPayload:
 
 
 # ---------------------------------------------------------------------------
-# NEW: Real-time window models (periodic analysis every 5 min)
+# Real-time window models (periodic analysis every 5 min)
 # ---------------------------------------------------------------------------
 
 @dataclass
 class WindowHistoryItem:
     """Summary of a previous window — Backend supplies this so we can
-    compute trends and escalation without persisting state ourselves."""
+    compute trends and escalation without persisting state ourselves.
+
+    dominant_action is the RAW action the AI computed for that window
+    (the `raw_action` field of the analyze-window response), NOT the
+    debounced `recommended_action` and never a SUPPRESSED marker. The AI
+    does not use it for trend/escalation; it is carried for logging only."""
     window_index: int
     focus_score: int
     state: str
-    dominant_action: str
+    dominant_action: str  # RAW action (pre-debounce), see class docstring
     understanding_score: int | None = None
 
     @classmethod

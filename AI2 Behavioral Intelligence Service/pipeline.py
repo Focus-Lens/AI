@@ -5,7 +5,7 @@ Full pipeline:
 Output shapes match api_contract.md.
 """
 
-from data_models import Section, SessionPayload, AnalysisWindow
+from data_models import Section, SessionPayload, AnalysisWindow, effective_time_seconds
 from feature_extraction import extract_features
 from state_detection import detect_state, STATE_PRIORITY
 from focus_score import compute_focus_score, weighted_window_score
@@ -75,6 +75,32 @@ def analyze_session(session: SessionPayload) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Dominant state (P2: duration-weighted)
+# ---------------------------------------------------------------------------
+
+def _dominant_state(section_results: list[dict], sections: list) -> str:
+    """
+    Dominant state = the state with the largest SUM of effective section
+    duration (effective_time_seconds). Severity order (STATE_PRIORITY, then
+    NORMAL_FOCUSED) is used ONLY as a tie-breaker: exactly equal totals, or
+    all durations 0. Lists must be aligned by index. Empty -> NORMAL_FOCUSED.
+    """
+    if not section_results:
+        return "NORMAL_FOCUSED"
+
+    totals: dict[str, float] = {}
+    for r, s in zip(section_results, sections):
+        totals[r["state"]] = totals.get(r["state"], 0.0) + effective_time_seconds(s)
+    totals = {k: round(v, 6) for k, v in totals.items()}  # avoid float-noise "ties"
+
+    best = max(totals.values())
+    return next(
+        s for s in STATE_PRIORITY + ["NORMAL_FOCUSED"]
+        if totals.get(s) == best
+    )
+
+
+# ---------------------------------------------------------------------------
 # Real-time path: periodic window analysis
 # ---------------------------------------------------------------------------
 
@@ -108,15 +134,9 @@ def analyze_window(window: AnalysisWindow) -> dict:
         history_understanding + [understanding_score]
     )
 
-    # 4. Dominant state (most frequent; tie-break by severity)
-    state_counts: dict[str, int] = {}
-    for r in section_results:
-        state_counts[r["state"]] = state_counts.get(r["state"], 0) + 1
-    max_count = max(state_counts.values())
-    dominant_state = next(
-        s for s in STATE_PRIORITY + ["NORMAL_FOCUSED"]
-        if state_counts.get(s, 0) == max_count
-    )
+    # 4. Dominant state: summed effective duration per state;
+    #    severity order is a tie-breaker only.
+    dominant_state = _dominant_state(section_results, aligned_sections)
 
     # 5. History-aware trend + escalation
     history_scores = [h.focus_score for h in window.history]
@@ -147,8 +167,10 @@ def analyze_window(window: AnalysisWindow) -> dict:
         "window_understanding_score": understanding_score,
         "understanding_trend": understanding_trend,
         "window_state": dominant_state,
-        "recommended_action": final_action,
-        "raw_action": raw_action,        # for debugging / logging
+        "recommended_action": final_action,  # debounced; may be "SUPPRESSED"
+        # RAW (pre-debounce) action. The backend must store/send THIS value as
+        # `dominant_action` in future `history` items, never recommended_action.
+        "raw_action": raw_action,
         "action_emitted": emitted,
         "trend": trend,
         "is_final": window.is_final,

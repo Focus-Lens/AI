@@ -15,8 +15,8 @@ Interactive docs:
 import hmac
 import os
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from pydantic import BaseModel, Field, model_validator
 
 from data_models import SessionPayload, AnalysisWindow
 from pipeline import analyze_session, analyze_window
@@ -47,10 +47,8 @@ class SectionIn(BaseModel):
     section_start_time: int = 0
     section_end_time: int = 0
     time_spent_seconds: float = Field(ge=0)
-    #None = telemetry not reported, 0 = reported and genuinely
-    # zero. These used to default to 0.0/0, silently collapsing that
-    # distinction into "measured zero" (which could wrongly look like
-    # disengagement). ge=0 still applies to any value that IS provided.
+    # None = telemetry not reported, 0 = reported and genuinely
+    # zero. ge=0 still applies to any value that IS provided.
     scroll_speed_avg_px_per_sec: float | None = Field(default=None, ge=0)
     scroll_direction_changes: int | None = Field(default=None, ge=0)
     content_progression_pct: float = Field(ge=0, le=100)
@@ -60,6 +58,16 @@ class SectionIn(BaseModel):
     total_background_seconds: float | None = Field(default=None, ge=0)
     micro_challenges: list[MicroChallengeIn] = []
     tab_hidden_count: int = 0
+    active_time_seconds: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Optional. Seconds the learner was actively engaged (foreground, "
+            "recent input) in this section. When provided it is used for "
+            "interaction rate and window weighting instead of "
+            "time_spent_seconds. None = not reported."
+        ),
+    )
 
 
 class SessionIn(BaseModel):
@@ -81,11 +89,19 @@ class SessionIn(BaseModel):
             )
         return self
 
+
 class WindowHistoryItemIn(BaseModel):
     window_index: int
     focus_score: int | None = Field(default=None, ge=0, le=100)
     state: str
-    dominant_action: str
+    dominant_action: str = Field(
+        description=(
+            "The RAW action the AI returned for that window (`raw_action` in "
+            "the analyze-window response). NOT the debounced "
+            "`recommended_action`, and never 'SUPPRESSED'. Informational only; "
+            "not used by trend/escalation logic."
+        )
+    )
     understanding_score: int | None = Field(default=None, ge=0, le=100)
 
 
@@ -113,7 +129,7 @@ class AnalysisWindowIn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 1b. Service-to-service authentication 
+# 1b. Service-to-service authentication
 # ---------------------------------------------------------------------------
 # Fail clearly at import (= startup, for this single-process service) if no
 # key is configured and auth wasn't explicitly disabled for local dev.
@@ -142,7 +158,7 @@ def require_service_key(x_service_key: str | None = Header(default=None, alias="
     if x_service_key is None or not hmac.compare_digest(x_service_key, service_key):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Service-Key")
 
-    
+
 # ---------------------------------------------------------------------------
 # 2. FastAPI app
 # ---------------------------------------------------------------------------
@@ -163,7 +179,7 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.post("/ai2/analyze-session")
+@app.post("/ai2/analyze-session", dependencies=[Depends(require_service_key)])
 def analyze_session_endpoint(payload: SessionIn):
     """
     End-of-session batch endpoint. Backend sends the full session once.
@@ -176,12 +192,15 @@ def analyze_session_endpoint(payload: SessionIn):
     return analyze_session(session)
 
 
-@app.post("/ai2/analyze-window")
+@app.post("/ai2/analyze-window", dependencies=[Depends(require_service_key)])
 def analyze_window_endpoint(payload: AnalysisWindowIn):
     """
     Real-time endpoint. Backend calls every 5 min (or earlier if the
     student closes the session). Returns window-level score + debounced
     recommended action. Backend supplies history with each call.
+
+    History items: `dominant_action` must be the RAW action (`raw_action` of
+    a previous response), not the debounced `recommended_action`.
     """
     try:
         window = AnalysisWindow.from_dict(payload.model_dump())

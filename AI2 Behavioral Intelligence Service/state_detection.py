@@ -57,8 +57,6 @@ def score_content_difficulty(features: dict, has_mcq: bool) -> float:
     true_w = []
     applicable_w = [3, 2]  #  revisit, scroll_pattern always applicable
 
-    # if features["reading_speed"] == "VERY_SLOW":                  # DELETED!
-    #     true_w.append(3)
     if features["revisit"] in ("MODERATE", "HIGH"):
         true_w.append(3)
 
@@ -79,8 +77,6 @@ def score_skimming(features: dict, has_mcq: bool) -> float:
     true_w = []
     applicable_w = []
 
-    # if features["reading_speed"] in ("FAST", "VERY_FAST"):                    # DELETED!
-    #     true_w.append(3)
     if features["scroll_speed"] is not None:
         applicable_w.append(2)
         if features["scroll_speed"] == "FAST":
@@ -110,8 +106,6 @@ def score_weak_understanding(features: dict, has_mcq: bool) -> float:
     true_w = [3]  # mcq_accuracy == LOW is guaranteed true to reach this point
     applicable_w = [3, 2, 1, 2]  # mcq_accuracy, revisit, progression, mcq_response_time
 
-    # if features["reading_speed"] == "NORMAL":                                  # DELETED!                                     
-    #     true_w.append(2)
     if features["revisit"] in ("NONE", "LOW"):
         true_w.append(2)
     if features["progression"] == "COMPLETE":
@@ -122,9 +116,24 @@ def score_weak_understanding(features: dict, has_mcq: bool) -> float:
     return _score(true_w, applicable_w)
 
 
+def _has_strong_disengagement(features: dict) -> bool:
+    """Gate for DISTRACTION_DISENGAGEMENT (P2). Uses the explicit flag computed
+    in feature_extraction.has_strong_disengagement_signal. If the flag is
+    absent (hand-built feature dicts), falls back to the classified
+    disengagement category, which implies background_count > 0."""
+    if "strong_disengagement" in features:
+        return bool(features["strong_disengagement"])
+    return features.get("disengagement") in ("MILD_DISTRACTION", "SIGNIFICANT_DISTRACTION")
+
+
 def score_disengagement(features: dict) -> float:
-    # Not MCQ-dependent, but disengagement and interaction can now be
-    # None (missing telemetry) per Task 1 — excluded from the denominator
+    # GATE (P2): weak signals alone (INCOMPLETE progression + NONE/LOW
+    # interaction) must NOT activate this state. Weights below are unchanged.
+    if not _has_strong_disengagement(features):
+        return 0.0
+
+    # Not MCQ-dependent, but disengagement and interaction can be
+    # None (missing telemetry) — excluded from the denominator
     # rather than counted as zero. progression is a required field, never
     # None, so it stays always-applicable.
     applicable_w = []

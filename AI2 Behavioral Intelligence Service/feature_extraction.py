@@ -10,33 +10,34 @@ Content is assumed English-only (per project decision) — no language branching
 """
 
 import os
-from data_models import Section
+from data_models import Section, MicroChallenge, effective_time_seconds
 
 # ---------------------------------------------------------------------------
-# MCQ accuracy metric selection (Task 5 — configurable, product decision
-# pending; see AI2 fix summary). Default preserves pre-existing behaviour.
+# MCQ accuracy metric selection (configurable, product decision pending).
+# Default preserves pre-existing behaviour.
 # ---------------------------------------------------------------------------
 MCQ_METRIC = os.environ.get("AI2_MCQ_METRIC", "attempt_accuracy")
 _VALID_MCQ_METRICS = {"attempt_accuracy", "first_attempt_accuracy", "final_answer_accuracy"}
 
 # ---------------------------------------------------------------------------
-# 1. Reading speed (English-only content — see feature_thresholds.md §1)
+# P2: strong-disengagement gate (product decisions — configurable).
+# DISTRACTION_DISENGAGEMENT may only activate if at least ONE strong signal
+# exists (see has_strong_disengagement_signal).
 # ---------------------------------------------------------------------------
-# def classify_reading_speed(wpm: float) -> str:                                        # DELETED!
-#     if wpm < 100:
-#         return "VERY_SLOW"
-#     elif wpm <= 250:
-#         return "NORMAL"
-#     elif wpm <= 400:
-#         return "FAST"
-#     else:
-#         return "VERY_FAST"
+DISTRACTION_MIN_BACKGROUND_SECONDS = float(
+    os.environ.get("AI2_DISTRACTION_MIN_BACKGROUND_SECONDS", "5")
+)
+DISTRACTION_MIN_INACTIVE_SECONDS = float(
+    os.environ.get("AI2_DISTRACTION_MIN_INACTIVE_SECONDS", "60")
+)
 
 
 # ---------------------------------------------------------------------------
 # 2. Scroll speed (placeholder — pending px/dp unit confirmation with Frontend)
 # ---------------------------------------------------------------------------
-def classify_scroll_speed(px_per_sec: float) -> str:
+def classify_scroll_speed(px_per_sec: float | None) -> str | None:
+    if px_per_sec is None:
+        return None  # telemetry not reported
     if px_per_sec < 100:
         return "SLOW"
     elif px_per_sec <= 400:
@@ -48,7 +49,9 @@ def classify_scroll_speed(px_per_sec: float) -> str:
 # ---------------------------------------------------------------------------
 # 3. Scroll pattern (rate-normalized by time)
 # ---------------------------------------------------------------------------
-def classify_scroll_pattern(direction_changes: int, time_spent_seconds: float) -> str:
+def classify_scroll_pattern(direction_changes: int | None, time_spent_seconds: float) -> str | None:
+    if direction_changes is None:
+        return None  # telemetry not reported
     if time_spent_seconds <= 0:
         # Edge Case B (test_scenarios.md): no time spent -> default to the
         # calmest/zero state rather than dividing by zero.
@@ -93,7 +96,11 @@ def classify_revisit(revisit_count: int) -> str:
 # ---------------------------------------------------------------------------
 # 6. Interaction rate (rate-normalized by time)
 # ---------------------------------------------------------------------------
-def classify_interaction(interaction_count: int, time_spent_seconds: float) -> str:
+def classify_interaction(interaction_count: int | None, time_spent_seconds: float) -> str | None:
+    """`time_spent_seconds` here must be the EFFECTIVE time
+    (data_models.effective_time_seconds), not the raw first-to-last-event time."""
+    if interaction_count is None:
+        return None  # telemetry not reported
     if interaction_count == 0 or time_spent_seconds <= 0:
         # Edge Case B: zero count or zero duration -> zero-state
         return "NONE"
@@ -158,8 +165,40 @@ def classify_disengagement(background_count: int | None, total_background_second
     else:
         return "SIGNIFICANT_DISTRACTION"
 
+
 # ---------------------------------------------------------------------------
-# 10. MCQ accuracy reduction — metric is configurable (Task 5)
+# 9b. P2: strong disengagement signal (gate for DISTRACTION_DISENGAGEMENT)
+# ---------------------------------------------------------------------------
+def has_strong_disengagement_signal(section: Section) -> bool:
+    """
+    True if at least one STRONG disengagement signal is present:
+      - background_count > 0
+      - total_background_seconds > DISTRACTION_MIN_BACKGROUND_SECONDS
+      - prolonged inactivity: interaction_count == 0 AND effective time
+        > DISTRACTION_MIN_INACTIVE_SECONDS
+
+    None (unreported) telemetry never counts. Weak signals alone
+    (INCOMPLETE progression, NONE interaction on a short section) are NOT
+    enough.
+    """
+    if section.background_count is not None and section.background_count > 0:
+        return True
+    if (
+        section.total_background_seconds is not None
+        and section.total_background_seconds > DISTRACTION_MIN_BACKGROUND_SECONDS
+    ):
+        return True
+    if (
+        section.interaction_count is not None
+        and section.interaction_count == 0
+        and effective_time_seconds(section) > DISTRACTION_MIN_INACTIVE_SECONDS
+    ):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 10. MCQ accuracy reduction — metric is configurable
 # ---------------------------------------------------------------------------
 def compute_mcq_accuracy_counts(
     micro_challenges: list[MicroChallenge], metric: str | None = None
@@ -192,7 +231,7 @@ def compute_mcq_accuracy_counts(
     definition ("distinct questions with at least one correct answer,
     ever"), which is closer to "best-of" than "first" or "final". That
     mismatch is a product decision, not something this function resolves
-    silently — see the AI2 fix summary (Task 5) for the discussion.
+    silently.
     """
     if metric is None:
         metric = MCQ_METRIC
@@ -226,7 +265,7 @@ def compute_mcq_accuracy_counts(
 # ---------------------------------------------------------------------------
 # Top-level: build the full feature vector for one Section
 # ---------------------------------------------------------------------------
-def extract_features(section: Section, mcq_metric: str | None = None) -> dict[str, str | int | None]:
+def extract_features(section: Section, mcq_metric: str | None = None) -> dict[str, object]:
     """
     Runs every classify_* function against a Section and returns the
     combined feature vector, matching the shape in feature_thresholds.md §10.
@@ -235,7 +274,7 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
     when the section has no micro_challenges — this is NOT the same as a
     "bad" classification, it means "not applicable". Non-MCQ behavioral
     features (scroll_speed, scroll_pattern, interaction, disengagement) can
-    now ALSO be None, when the corresponding telemetry was not reported at
+    ALSO be None, when the corresponding telemetry was not reported at
     all by the Frontend (as opposed to a reported value of 0). Downstream
     layers (state_detection.py, focus_score.py) must check for None and
     exclude these from their calculations rather than treating None as a
@@ -247,6 +286,9 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
     The returned "mcq_count" is the number of MCQ observations that fed
     mcq_accuracy under the active metric (after any first/final dedup) —
     state_detection.py uses it as the evidence count for MIN_MCQ_EVIDENCE.
+
+    P2 additions (additive keys): "effective_time_seconds" and
+    "strong_disengagement" (gate for DISTRACTION_DISENGAGEMENT).
     """
     correct_mcq, total_mcq = compute_mcq_accuracy_counts(section.micro_challenges, metric=mcq_metric)
     avg_response_time = (
@@ -254,22 +296,23 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
         if section.micro_challenges
         else None
     )
+    eff_time = effective_time_seconds(section)
 
     return {
-        # "reading_speed": classify_reading_speed(section.reading_speed_wpm),            # DELETED!
         "scroll_speed": classify_scroll_speed(section.scroll_speed_avg_px_per_sec),
+        # scroll_pattern still uses raw time_spent_seconds (out of P2 scope)
         "scroll_pattern": classify_scroll_pattern(
             section.scroll_direction_changes, section.time_spent_seconds
         ),
         "progression": classify_progression(section.content_progression_pct),
         "revisit": classify_revisit(section.section_revisit_count),
-        "interaction": classify_interaction(
-            section.interaction_count, section.time_spent_seconds
-        ),
+        "interaction": classify_interaction(section.interaction_count, eff_time),
         "mcq_accuracy": classify_mcq_accuracy(correct_mcq, total_mcq),
         "mcq_response_time": classify_response_time(avg_response_time),
         "mcq_count": total_mcq,
         "disengagement": classify_disengagement(
             section.background_count, section.total_background_seconds
         ),
+        "effective_time_seconds": eff_time,
+        "strong_disengagement": has_strong_disengagement_signal(section),
     }
