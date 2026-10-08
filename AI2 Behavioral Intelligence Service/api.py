@@ -57,7 +57,11 @@ class SectionIn(BaseModel):
     background_count: int | None = Field(default=None, ge=0)
     total_background_seconds: float | None = Field(default=None, ge=0)
     micro_challenges: list[MicroChallengeIn] = []
-    tab_hidden_count: int = 0
+    tab_hidden_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of times the browser tab became hidden; contributes to disengagement signals.",
+    )
     active_time_seconds: float | None = Field(
         default=None,
         ge=0,
@@ -84,6 +88,16 @@ class SectionIn(BaseModel):
                 f"time_spent_seconds ({self.time_spent_seconds}) exceeds max allowed "
                 f"({MAX_SECTION_DURATION_SECONDS}s)"
             )
+        if (
+            self.active_time_seconds is not None
+            and self.active_time_seconds > self.time_spent_seconds
+        ):
+            raise ValueError("active_time_seconds must be <= time_spent_seconds")
+        if (
+            self.total_background_seconds is not None
+            and self.total_background_seconds > self.time_spent_seconds
+        ):
+            raise ValueError("total_background_seconds must be <= time_spent_seconds")
         return self
 
 
@@ -200,6 +214,7 @@ def health_check():
 def analyze_session_endpoint(payload: SessionIn):
     """
     End-of-session batch endpoint. Backend sends the full session once.
+    Request validation errors are returned by FastAPI as HTTP 422.
     """
     try:
         session = SessionPayload.from_dict(payload.model_dump())
@@ -218,6 +233,7 @@ def analyze_window_endpoint(payload: AnalysisWindowIn):
 
     History items: `dominant_action` must be the RAW action (`raw_action` of
     a previous response), not the debounced `recommended_action`.
+    Request validation errors are returned by FastAPI as HTTP 422.
     """
     try:
         window = AnalysisWindow.from_dict(payload.model_dump())

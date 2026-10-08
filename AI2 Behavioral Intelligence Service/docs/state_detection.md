@@ -11,7 +11,7 @@
 
 ## 0. Core Principle
 
-No single signal is ever treated as a definitive classification. Each candidate state has a set of weighted conditions; conditions that are true contribute their weight to that state's score. The state with the highest score (above a minimum activation threshold) wins. The score itself becomes the `confidence` value returned to Backend.
+No single signal is ever treated as a definitive classification. Each candidate state has a set of weighted conditions; conditions that are true contribute their weight to that state's score. The state with the highest score (above a minimum activation threshold) wins. For activated states, the score contributes to confidence (with an MCQ evidence discount where applicable). For `NORMAL_FOCUSED`, confidence is additionally scaled by observed evidence and is not treated as the inverse of concern alone.
 
 ```text id="6kz2ym"
 score(state) =
@@ -147,9 +147,11 @@ def detect_state(features: dict) -> dict:
     else:
         return {
             "state": "NORMAL_FOCUSED",
-            "confidence": round(1 - best_score, 2)
+            "confidence": round((1 - best_score) * normal_evidence_factor(features), 2)
         }
 ```
+
+`normal_evidence_factor` is the fraction of observed signal domains among scrolling, interaction, app/tab focus, and MCQ performance. Missing values do not count. No telemetry yields confidence `0.0`; one observed domain contributes at most `0.25`; two domains at most `0.5`; and all four permit the full inverse-score confidence. This prevents missing data from being reported as certain focus.
 
 ---
 

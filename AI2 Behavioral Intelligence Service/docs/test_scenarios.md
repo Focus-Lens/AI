@@ -92,7 +92,7 @@
 }
 ```
 
-**Expected:** `state=WEAK_UNDERSTANDING`, `confidence=1.0`, `recommendedAction=SHOW_EXPLANATION`.
+**Expected:** `state=WEAK_UNDERSTANDING`, evidence-scaled confidence, `recommendedAction=SHOW_EXPLANATION`.
 
 ---
 
@@ -175,6 +175,10 @@ Same as Scenario 1 but with `"micro_challenges": []`.
 No automated test for exact tie construction yet (hard to force via realistic inputs); tie-break order is verified by code review of `STATE_PRIORITY` instead.
 
 ---
+
+## Edge Case: Sparse Evidence and Hidden Tabs
+
+With all behavioral telemetry missing, the fallback may still be `NORMAL_FOCUSED`, but its confidence is `0.0`. One observed signal domain scales its confidence to at most `0.25`. A reported hidden browser tab contributes to the combined interruption count and can support `DISTRACTION_DISENGAGEMENT`.
 
 ## Edge Case D — Malformed Section (missing required field)
 

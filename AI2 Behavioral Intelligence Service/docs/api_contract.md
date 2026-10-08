@@ -2,7 +2,7 @@
 
 **Version:** 0.2 (Draft — adds real-time window endpoint)
 **Owner:** Hossam — AI Engineer
-**Depends on:** all prior documents (`data_dictionary`, `feature_thresholds`, `state_detection`, `focus_score`, `adaptive_decision`, `trend_analysis`, `debounce`)
+**Depends on:** `AI_Behavioral_Signals_Contract2.md`, `feature_thresholds`, `state_detection`, `focus_score`, `adaptive_decision`, `trend_analysis`, and `debounce`.
 **Output granularity:** **Dual.**
 
 * `POST /ai2/analyze-session` — **per-section** results, one batch at end of session.
@@ -15,7 +15,7 @@
 ### End-of-session path (unchanged)
 
 ```text
-Backend sends SessionPayload (data_dictionary.md)
+Backend sends SessionPayload (request schema in `AI_Behavioral_Signals_Contract2.md`)
         ↓
 AI2 Service processes EACH section in `sections[]` independently
         ↓
@@ -62,13 +62,13 @@ AI2 returns a SINGLE window result:
 
 ## 1. End-of-Session Request (Backend → AI2)
 
-Same shape as `SessionPayload` defined in `data_dictionary.md`. No changes.
+Same shape as `SessionPayload` defined in `AI_Behavioral_Signals_Contract2.md`. No changes.
 
 ```http
 POST /ai2/analyze-session
 Content-Type: application/json
 
-Body: SessionPayload (see data_dictionary.md)
+Body: SessionPayload (see `AI_Behavioral_Signals_Contract2.md`)
 ```
 
 ---
@@ -193,7 +193,7 @@ Body: AnalysisWindow
 | `window_start` | integer (unix ms)            | Yes                  | Window start timestamp                                                                                                         |
 | `window_end`   | integer (unix ms)            | Yes                  | Window end timestamp. If the student closed early, this is `min(planned_end, actual_close_time)`.                              |
 | `is_final`     | boolean                      | No (default `false`) | `true` if this is the last window of the session (student closed or planned end reached). **Triggers debounce state cleanup.** |
-| `sections`     | array of `Section`           | Yes (may be `[]`)    | Sections observed during this window. Same shape as `data_dictionary.md` §2.                                                   |
+| `sections`     | array of `Section`           | Yes (may be `[]`)    | Sections observed during this window. Same shape as `AI_Behavioral_Signals_Contract2.md`.                                        |
 | `history`      | array of `WindowHistoryItem` | Yes (may be `[]`)    | Summaries of all previous windows in this session, in order. **Backend owns this list.**                                       |
 
 ### 3.2 `WindowHistoryItem` Field Reference
@@ -290,12 +290,15 @@ This is **not an error** — it's a normal outcome. Backend should treat it as "
 
 ## 5. Error Handling
 
+FastAPI returns **HTTP 422 Unprocessable Entity** for request-body validation errors raised by Pydantic, including negative counts, out-of-range values, and time-consistency violations. The section model requires `active_time_seconds <= time_spent_seconds` and `total_background_seconds <= time_spent_seconds`. Validation errors occur before endpoint execution; the endpoint's HTTP 400 response is reserved for a later internal conversion failure.
+
 | Scenario                                                                                              | Behavior                                                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A section has no `micro_challenges`                                                                   | Not an error — processed normally, `mcq_data_available: false`, MCQ-dependent conditions excluded (see `state_detection.md` §7)                                                              |
 | A section is missing a required raw field (e.g. `time_spent_seconds`)                                 | That section is skipped. In `/analyze-session` it goes into `errors[]`. In `/analyze-window` it's silently skipped (the window still returns with `sections_analyzed` reflecting the count). |
 | All sections in a window are malformed                                                                | `sections_analyzed == 0` → treated as an empty window (see §4.2)                                                                                                                             |
-| Entire payload is malformed (missing `session_id`, `sections` not an array, `window_index < 1`, etc.) | HTTP 400 via Pydantic validation, no result returned                                                                                                                                         |
+| Payload fails Pydantic validation (missing required fields, invalid ranges, inconsistent active/background time, `window_index < 1`, etc.) | HTTP 422 Unprocessable Entity; no result returned |
+| Internal conversion fails after Pydantic validation | HTTP 400 with a malformed-payload detail |
 | `time_spent_seconds == 0` for a section                                                               | Rate-based features use their zero-state (`scroll_pattern=STABLE`, `interaction=NONE`) — no crash                                                                                            |
 | Window's `sections` empty but history shows a serious issue                                           | Still returns `CONTINUE` — no escalation without current-window evidence. This is intentional: we don't punish a learner for a window where we have no data.                                 |
 

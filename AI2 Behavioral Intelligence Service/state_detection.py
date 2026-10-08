@@ -33,6 +33,24 @@ def _mcq_evidence_factor(mcq_count: int) -> float:
         return 0.0
     return min(1.0, mcq_count / CONFIDENCE_FULL_MCQ_EVIDENCE)
 
+
+def _normal_evidence_factor(features: dict) -> float:
+    """Scale NORMAL_FOCUSED confidence by independently observed domains.
+
+    A neutral classification is only as reliable as the telemetry examined.
+    The four domains are scrolling, interaction, app/tab focus, and MCQ
+    performance. Missing values do not count as evidence.
+    """
+    observed_domains = (
+        features.get("scroll_speed") is not None
+        or features.get("scroll_pattern") is not None,
+        features.get("interaction") is not None,
+        features.get("disengagement") is not None,
+        features.get("mcq_accuracy") is not None
+        or features.get("mcq_response_time") is not None,
+    )
+    return sum(observed_domains) / len(observed_domains)
+
 # Explicit tie-breaking priority — see test_scenarios.md Edge Case C.
 # If two states score equally, the one listed FIRST wins.
 # Ordered by "severity of inaction" — disengagement is most costly to miss,
@@ -195,8 +213,12 @@ def detect_state(features: dict) -> dict:
             confidence = round(rule_match_score * _mcq_evidence_factor(mcq_count), 2)
         return {"state": best_state, "confidence": confidence, "rule_match_score": rule_match_score}
     else:
+        # A low concern score is not proof of focus when the underlying
+        # behavioral telemetry is absent. At most one observed domain gives
+        # confidence <= 0.25; two domains cap it at 0.5.
+        confidence = (1 - best_score) * _normal_evidence_factor(features)
         return {
             "state": "NORMAL_FOCUSED",
-            "confidence": round(1 - best_score, 2),
+            "confidence": round(confidence, 2),
             "rule_match_score": rule_match_score,
         }

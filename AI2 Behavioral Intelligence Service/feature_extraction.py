@@ -152,16 +152,27 @@ def classify_response_time(avg_response_time_seconds: float | None) -> str | Non
 # ---------------------------------------------------------------------------
 # 9. Disengagement / background behavior
 # ---------------------------------------------------------------------------
-def classify_disengagement(background_count: int | None, total_background_seconds: float | None) -> str | None:
-    """Returns None (unknown) when either half of this signal pair is
-    missing — a partial reading (e.g. count but no duration) is not enough
-    to classify disengagement severity."""
-    if background_count is None or total_background_seconds is None:
+def classify_disengagement(
+    background_count: int | None,
+    total_background_seconds: float | None,
+    tab_hidden_count: int | None = None,
+) -> str | None:
+    """Classify background and hidden-tab interruptions.
+
+    With no hidden-tab event, missing either background metric remains
+    unknown for backward compatibility. A positive hidden-tab count is an
+    independently observed interruption and can be classified on its own.
+    """
+    if (
+        (background_count is None or total_background_seconds is None)
+        and not (tab_hidden_count or 0)
+    ):
         return None
 
-    if background_count == 0:
+    interruptions = (background_count or 0) + (tab_hidden_count or 0)
+    if interruptions == 0:
         return "FOCUSED"
-    elif background_count <= 2 and total_background_seconds < 30:
+    elif interruptions <= 2 and (total_background_seconds or 0) < 30:
         return "MILD_DISTRACTION"
     else:
         return "SIGNIFICANT_DISTRACTION"
@@ -183,6 +194,8 @@ def has_strong_disengagement_signal(section: Section) -> bool:
     enough.
     """
     if section.background_count is not None and section.background_count > 0:
+        return True
+    if getattr(section, "tab_hidden_count", 0) > 0:
         return True
     if (
         section.total_background_seconds is not None
@@ -317,7 +330,9 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
         "mcq_response_time": classify_response_time(avg_response_time) if mcq_enough else None,
         "mcq_count": total_mcq,
         "disengagement": classify_disengagement(
-            section.background_count, section.total_background_seconds
+            section.background_count,
+            section.total_background_seconds,
+            section.tab_hidden_count,
         ),
         "effective_time_seconds": eff_time,
         "strong_disengagement": has_strong_disengagement_signal(section),

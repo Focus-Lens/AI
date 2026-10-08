@@ -129,6 +129,73 @@ def test_api_model_active_time_validation():
         SectionIn(**base, active_time_seconds=-1)
 
 
+def test_api_model_rejects_inconsistent_active_and_background_time():
+    from api import SectionIn
+    base = dict(section_id="s", concept_id="c", time_spent_seconds=10, content_progression_pct=10)
+    with pytest.raises(ValidationError, match="active_time_seconds"):
+        SectionIn(**base, active_time_seconds=10.1)
+    with pytest.raises(ValidationError, match="total_background_seconds"):
+        SectionIn(**base, total_background_seconds=10.1)
+
+
+def test_fastapi_validation_error_uses_422():
+    from fastapi.testclient import TestClient
+    from api import app
+
+    client = TestClient(app)
+    payload = {
+        "user_id": "u",
+        "session_id": "s",
+        "session_start": 0,
+        "session_end": 10000,
+        "sections": [{
+            "section_id": "x",
+            "concept_id": "c",
+            "time_spent_seconds": 10,
+            "active_time_seconds": 11,
+            "content_progression_pct": 20,
+        }],
+    }
+    response = client.post("/ai2/analyze-session", json=payload)
+    assert response.status_code == 422
+
+
+def test_normal_confidence_is_scaled_by_observed_evidence():
+    no_telemetry = make_section(
+        scroll_speed_avg_px_per_sec=None,
+        scroll_direction_changes=None,
+        interaction_count=None,
+        background_count=None,
+        total_background_seconds=None,
+    )
+    result = detect_state(extract_features(no_telemetry))
+    assert result["state"] == "NORMAL_FOCUSED"
+    assert result["confidence"] == 0.0
+
+    sparse = make_section(
+        scroll_speed_avg_px_per_sec=200,
+        scroll_direction_changes=None,
+        interaction_count=None,
+        background_count=None,
+        total_background_seconds=None,
+    )
+    assert detect_state(extract_features(sparse))["confidence"] <= 0.4
+
+
+def test_hidden_tab_contributes_to_disengagement():
+    section = make_section(
+        background_count=0,
+        total_background_seconds=0,
+        tab_hidden_count=1,
+        interaction_count=0,
+        content_progression_pct=20,
+    )
+    features = extract_features(section)
+    assert features["disengagement"] == "MILD_DISTRACTION"
+    assert features["strong_disengagement"] is True
+    assert state_of(section) == "DISTRACTION_DISENGAGEMENT"
+
+
 # ---------------- Task 3: dominant state ----------------
 
 def _r(*states):

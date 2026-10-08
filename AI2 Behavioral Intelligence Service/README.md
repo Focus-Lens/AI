@@ -29,7 +29,7 @@ uvicorn api:app --reload --port 8000
 pytest tests/ -v
 ```
 
-All 8 scenarios (5 learning states + 3 edge cases) should pass. Run this after any change to a threshold, weight, or scoring rule.
+Run the complete test suite after any change to a threshold, weight, or scoring rule. The current suite has 62 tests covering batch analysis, real-time windows, and boundary cases.
 
 ---
 
@@ -41,9 +41,11 @@ Liveness check. Returns `{"status": "ok"}` if the service is running.
 ### `POST /ai2/analyze-session`
 Main endpoint. Backend calls this **once, at the end of a session**, with the full session payload (all sections visited). Returns one result object per section.
 
-**Request body:** see [`docs/data_dictionary.md`](./docs/data_dictionary.md) for the full field reference.
+**Request body:** see [`docs/api_contract.md`](./docs/api_contract.md) for the request and response contract.
 
 **Response body:** see [`docs/api_contract.md`](./docs/api_contract.md) for the full field reference, including error handling for partial failures.
+
+Malformed request bodies and Pydantic range or consistency failures return **HTTP 422 Unprocessable Entity**. The service uses HTTP 400 only for an internal conversion failure after request validation.
 
 **Minimal example:**
 
@@ -59,7 +61,6 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
       {
         "section_id": "S003",
         "concept_id": "C008",
-        "reading_speed_wpm": 300,
         "time_spent_seconds": 60,
         "scroll_direction_changes": 1,
         "content_progression_pct": 95,
@@ -114,7 +115,6 @@ ai2_service/
 ├── tests/
 │   └── test_scenarios.py   # Automated regression tests for all states + edge cases
 └── docs/                    # Full methodology documentation (see below)
-    ├── data_dictionary.md
     ├── feature_thresholds.md
     ├── state_detection.md
     ├── focus_score.md
@@ -129,7 +129,6 @@ Each stage of the pipeline has a corresponding design doc in [`docs/`](./docs) �
 
 | Doc | Covers |
 |---|---|
-| `docs/data_dictionary.md` | Input payload schema (what Backend/Frontend must send) |
 | `docs/feature_thresholds.md` | How raw signals are classified into categories |
 | `docs/state_detection.md` | How classified features combine into a learning state |
 | `docs/focus_score.md` | How the 0–100 focus score is computed |
@@ -149,14 +148,22 @@ These are tracked in detail inside each doc above, summarized here for convenien
 4. Final HTTP path/naming convention expected by Backend's service registry (`/ai2/analyze-session` is a proposal, not final).
 5. Service-to-service auth mechanism.
 6. Retry/timeout behavior expected if this service is slow or down.
-7. Whether session-level aggregation (e.g. average focus score across sections) is needed anywhere — current recommendation: Backend aggregates, this service only returns per-section results.
+7. Session-level metrics are owned by Backend (see Architecture Ownership below); confirm product display rules with Backend/Product.
 8. Naming convention consistency: most fields are `snake_case`, but `focusScore`/`recommendedAction` are `camelCase` (matching the original spec example) — confirm whether Backend wants full consistency in either direction.
 
 ---
 
 ## 7. Status
 
-- [x] Core logic implemented and unit-tested (8/8 passing)
+- [x] Core logic implemented and regression-tested (`pytest tests/`)
 - [x] HTTP API implemented (FastAPI + Pydantic validation)
 - [ ] Deployment configuration (Docker, hosting) — not yet addressed, pending Backend/DevOps input
 - [ ] Open Points above confirmed with Backend/Frontend
+
+## 8. Architecture Ownership
+
+- **AI Engine:** deterministic analysis for each submitted window through `POST /ai2/analyze-window`. It returns window focus score, dominant state, trend, and action, while preserving per-section detail.
+- **Backend:** persists every window, owns session history, and derives session-level `focusQuality`, `focusState`, and `focusTrend` from persisted window results. The AI service does not aggregate or persist session-level metrics.
+- **Consumers:** Overview and Reports read the Backend's session-level metrics.
+
+Backend should calculate session `focusQuality` as the active-time-weighted mean of non-null window focus scores; `focusState` as the active-time-weighted dominant window state (severity order breaks ties); and `focusTrend` from chronological non-null window focus scores using the rule in `docs/trend_analysis.md`. Empty windows have null focus and do not contribute. Backend owns the persistence schema and retains window-level records for auditability.

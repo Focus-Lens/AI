@@ -205,7 +205,7 @@ This section shows how the different AI modules connect together.
 
 ```text
 Raw Events / Signals
-(data_dictionary.md)
+(docs/api_contract.md)
         ↓
 Classified Features
 (feature_thresholds.md)
@@ -229,7 +229,7 @@ Backend
 
 ```text
 Raw Events / Signals
-(data_dictionary.md)
+(docs/api_contract.md)
         ↓
 Per-section signals within a 5-minute window
         ↓

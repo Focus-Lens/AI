@@ -1,6 +1,6 @@
 """
 Data models for the AI2 Behavioral Intelligence service.
-Mirrors the schema defined in data_dictionary.md — keep both in sync.
+Mirrors the request schema in docs/api_contract.md — keep both in sync.
 """
 
 from dataclasses import dataclass, field
@@ -39,6 +39,7 @@ class Section:
     background_count: int | None
     total_background_seconds: float | None
     micro_challenges: list[MicroChallenge] = field(default_factory=list)
+    # Browser tab visibility events; included in the disengagement signal.
     tab_hidden_count: int = 0
     # P2: seconds the learner was actually active in this section
     # (foreground + recent input). None = not reported by the backend.
