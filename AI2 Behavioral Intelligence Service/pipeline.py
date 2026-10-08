@@ -126,6 +126,9 @@ def analyze_window(window: AnalysisWindow) -> dict:
 
     # 3. Duration-weighted window score
     window_score = weighted_window_score(section_results, aligned_sections)
+    # Match the same effective-time weighting used for window focus scoring;
+    # backend can use this exact total for session-level aggregation.
+    window_active_time = sum(effective_time_seconds(s) for s in aligned_sections)
 
     # 3b. Understanding is based only on MCQ correctness.
     understanding_score = compute_understanding_score(aligned_sections)
@@ -164,6 +167,7 @@ def analyze_window(window: AnalysisWindow) -> dict:
         "session_id": window.session_id,
         "window_index": window.window_index,
         "window_focus_score": window_score,
+        "window_active_time_seconds": window_active_time,
         "window_understanding_score": understanding_score,
         "understanding_trend": understanding_trend,
         "window_state": dominant_state,
@@ -187,6 +191,7 @@ def _empty_window_response(window: AnalysisWindow) -> dict:
         "session_id": window.session_id,
         "window_index": window.window_index,
         "window_focus_score": None,
+        "window_active_time_seconds": 0.0,
         "window_understanding_score": None,
         "understanding_trend": "STABLE",
         "window_state": "NORMAL_FOCUSED",

@@ -29,11 +29,15 @@ uvicorn api:app --reload --port 8000
 pytest tests/ -v
 ```
 
-Run the complete test suite after any change to a threshold, weight, or scoring rule. The current suite has 62 tests covering batch analysis, real-time windows, and boundary cases.
+Run the complete test suite after any change to a threshold, weight, or scoring rule. The current suite has 82 tests covering batch analysis, real-time windows, and boundary cases.
 
 ---
 
 ## 3. API Overview
+
+### Service-to-service authentication
+
+Both analysis endpoints require the `X-Service-Key` request header. Configure the same secret as `AI2_SERVICE_KEY` in AI2 and the calling Backend. Missing or invalid keys return **HTTP 401 Unauthorized**. Set `AI2_AUTH_DISABLED=true` only for local development.
 
 ### `GET /health`
 Liveness check. Returns `{"status": "ok"}` if the service is running.
@@ -52,6 +56,7 @@ Malformed request bodies and Pydantic range or consistency failures return **HTT
 ```bash
 curl -X POST http://localhost:8000/ai2/analyze-session \
   -H "Content-Type: application/json" \
+  -H "X-Service-Key: $AI2_SERVICE_KEY" \
   -d '{
     "user_id": "usr_10293",
     "session_id": "sess_88392",
@@ -113,7 +118,10 @@ ai2_service/
 ├── requirements.txt
 ├── .gitignore
 ├── tests/
-│   └── test_scenarios.py   # Automated regression tests for all states + edge cases
+│   ├── test_scenarios.py   # Batch state and edge-case regressions
+│   ├── test_p1_fixes.py    # Null semantics, MCQ evidence, timestamps, and auth
+│   ├── test_p2_fixes.py    # Window weighting and boundary validations
+│   └── test_window_scenarios.py # Real-time window behavior
 └── docs/                    # Full methodology documentation (see below)
     ├── feature_thresholds.md
     ├── state_detection.md
@@ -146,9 +154,8 @@ These are tracked in detail inside each doc above, summarized here for convenien
 2. Unit for `scroll_speed_avg_px_per_sec` (raw px vs. density-independent dp) — thresholds are placeholders until confirmed.
 3. Null/missing field convention from Frontend (0 vs. `null`).
 4. Final HTTP path/naming convention expected by Backend's service registry (`/ai2/analyze-session` is a proposal, not final).
-5. Service-to-service auth mechanism.
-6. Retry/timeout behavior expected if this service is slow or down.
-7. Session-level metrics are owned by Backend (see Architecture Ownership below); confirm product display rules with Backend/Product.
+5. Retry/timeout behavior expected if this service is slow or down.
+6. Session-level metrics are owned by Backend (see Architecture Ownership below); confirm product display rules with Backend/Product.
 8. Naming convention consistency: most fields are `snake_case`, but `focusScore`/`recommendedAction` are `camelCase` (matching the original spec example) — confirm whether Backend wants full consistency in either direction.
 
 ---

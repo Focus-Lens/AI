@@ -159,14 +159,12 @@ def classify_disengagement(
 ) -> str | None:
     """Classify background and hidden-tab interruptions.
 
-    With no hidden-tab event, missing either background metric remains
-    unknown for backward compatibility. A positive hidden-tab count is an
-    independently observed interruption and can be classified on its own.
+    Missing tab telemetry is distinct from a reported zero. A reported tab
+    count can classify tab visibility on its own; when background telemetry
+    is also present, the event counts are combined.
     """
-    if (
-        (background_count is None or total_background_seconds is None)
-        and not (tab_hidden_count or 0)
-    ):
+    background_pair_available = background_count is not None and total_background_seconds is not None
+    if not background_pair_available and tab_hidden_count is None:
         return None
 
     interruptions = (background_count or 0) + (tab_hidden_count or 0)
@@ -195,7 +193,7 @@ def has_strong_disengagement_signal(section: Section) -> bool:
     """
     if section.background_count is not None and section.background_count > 0:
         return True
-    if getattr(section, "tab_hidden_count", 0) > 0:
+    if (getattr(section, "tab_hidden_count", None) or 0) > 0:
         return True
     if (
         section.total_background_seconds is not None
@@ -329,6 +327,7 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
         "mcq_accuracy": classify_mcq_accuracy(correct_mcq, total_mcq) if mcq_enough else None,
         "mcq_response_time": classify_response_time(avg_response_time) if mcq_enough else None,
         "mcq_count": total_mcq,
+        "tab_hidden_count": section.tab_hidden_count,
         "disengagement": classify_disengagement(
             section.background_count,
             section.total_background_seconds,

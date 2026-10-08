@@ -332,6 +332,16 @@ def test_window_single_focused_section():
     assert result["window_focus_score"] == 100
     assert result["trend"] == "STABLE"
     assert result["sections_analyzed"] == 1
+    assert result["window_active_time_seconds"] == 120.0
+
+
+def test_window_active_time_sums_effective_time_of_analyzed_sections():
+    window = make_window(sections=[
+        make_section(time_spent_seconds=100, active_time_seconds=40),
+        make_section(time_spent_seconds=60, total_background_seconds=10),
+    ])
+    result = analyze_window(window)
+    assert result["window_active_time_seconds"] == 90.0
 
 
 def test_window_dominant_state_is_longest_total_duration():
@@ -407,6 +417,7 @@ def test_window_empty_sections_does_not_crash():
     assert result["window_state"] == "NORMAL_FOCUSED"
     assert result["recommended_action"] == "CONTINUE"
     assert result["sections_analyzed"] == 0
+    assert result["window_active_time_seconds"] == 0.0
     assert result.get("note") == "empty_window"
 
 

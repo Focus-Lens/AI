@@ -69,7 +69,7 @@ Represents one continuous or aggregated visit record for a content section withi
 | `micro_challenges` | array of `MicroChallenge` | No | — | List of micro-challenge (MCQ) attempts tied to this section. Can be empty if no challenge was shown |
 | `background_count` | integer | Yes | count, ≥ 0 | Number of times the app went to background while in this section |
 | `total_background_seconds` | float | Yes | seconds, ≥ 0 | Total time app spent in background while in this section |
-| `tab_hidden_count` | integer | No | count, ≥ 0 | Number of times the browser tab became hidden (web only — omit or 0 on mobile); contributes to disengagement classification |
+| `tab_hidden_count` | integer or null | No | count, ≥ 0 | Number of times the browser tab became hidden; `null`/omitted means unavailable, `0` means measured zero. Contributes to disengagement classification. |
 | `active_time_seconds` | float or null | No | seconds, ≥ 0 | Engaged foreground time; when present, it must not exceed `time_spent_seconds` |
  
 ---

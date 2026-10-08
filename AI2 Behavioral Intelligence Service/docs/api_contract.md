@@ -47,6 +47,7 @@ AI2 Service:
 AI2 returns a SINGLE window result:
 
 - `window_focus_score`
+- `window_active_time_seconds`
 - `window_understanding_score`
 - `understanding_trend`
 - `window_state`
@@ -57,6 +58,10 @@ AI2 returns a SINGLE window result:
 ```
 
 **The AI2 service remains stateless across requests for session data.** Backend holds the session history and supplies it on every window call. The ONLY piece of cross-request state inside AI2 is the debounce store (in-memory, TTL 1h, see `debounce.md`).
+
+## Authentication
+
+Both `/ai2/analyze-session` and `/ai2/analyze-window` require the `X-Service-Key` header. The value must match the AI2 service's `AI2_SERVICE_KEY` configuration and the Backend's shared secret. Missing or invalid headers return **HTTP 401 Unauthorized**. Authentication can be disabled with `AI2_AUTH_DISABLED=true` for local development only.
 
 ---
 
@@ -217,6 +222,7 @@ Body: AnalysisWindow
   "session_id": "sess_88392",
   "window_index": 3,
   "window_focus_score": 68,
+  "window_active_time_seconds": 45.0,
   "window_understanding_score": 50,
   "understanding_trend": "DECLINING",
   "window_state": "CONTENT_DIFFICULTY",
@@ -250,6 +256,7 @@ Body: AnalysisWindow
 | `session_id`         | string                    | Echoed from request                                                                                                           |
 | `window_index`       | integer                   | Echoed from request                                                                                                           |
 | `window_focus_score` | integer (0–100) OR `null` | Duration-weighted mean of per-section focus scores in this window. `null` if no sections were analysable (see §4.2).          |
+| `window_active_time_seconds` | float | Sum of the effective active time for sections successfully analyzed in this window. Uses reported `active_time_seconds` when available, otherwise the existing effective-time fallback. Empty/unanalysable windows return `0.0`. |
 | `window_understanding_score` | integer (0-100) OR null | Percentage of MCQ attempts answered correctly in this window; null when there are no MCQ attempts. |
 | `understanding_trend` | enum | IMPROVING / STABLE / DECLINING, using only non-null understanding scores. |
 | `window_state`       | enum                      | Dominant state of the window (most frequent, severity tie-break).                                                             |
@@ -270,6 +277,7 @@ If `sections == []` (student closed the app immediately after the previous windo
   "session_id": "sess_88392",
   "window_index": 4,
   "window_focus_score": null,
+  "window_active_time_seconds": 0.0,
   "window_understanding_score": null,
   "understanding_trend": "STABLE",
   "window_state": "NORMAL_FOCUSED",
@@ -289,6 +297,8 @@ This is **not an error** — it's a normal outcome. Backend should treat it as "
 ---
 
 ## 5. Error Handling
+
+Missing or invalid `X-Service-Key` returns **HTTP 401 Unauthorized**. This authentication response applies to both analysis endpoints; `/health` remains public.
 
 FastAPI returns **HTTP 422 Unprocessable Entity** for request-body validation errors raised by Pydantic, including negative counts, out-of-range values, and time-consistency violations. The section model requires `active_time_seconds <= time_spent_seconds` and `total_background_seconds <= time_spent_seconds`. Validation errors occur before endpoint execution; the endpoint's HTTP 400 response is reserved for a later internal conversion failure.
 

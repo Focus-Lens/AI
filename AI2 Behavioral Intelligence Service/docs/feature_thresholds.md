@@ -140,7 +140,7 @@ Input: average `response_time_seconds` across all questions in the section (or `
 | Combined interruption count 1–2 AND background seconds < 30 | `MILD_DISTRACTION`        |
 | Combined interruption count > 2 OR background seconds >= 30 | `SIGNIFICANT_DISTRACTION` |
 
-Any reported hidden-tab event contributes to the interruption count and can activate the strong-disengagement gate. If both background count and background duration are missing, a zero/missing tab count still leaves disengagement unknown (`None`).
+Any reported hidden-tab event contributes to the interruption count and can activate the strong-disengagement gate. If background count and duration are missing, `tab_hidden_count=None` leaves disengagement unknown; a reported `tab_hidden_count=0` classifies the measured tab signal as focused.
 
 ---
 

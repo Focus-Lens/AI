@@ -123,6 +123,8 @@ def test_inactive_gap_gets_no_extra_window_weight_when_active_time_supplied():
 def test_api_model_active_time_validation():
     from api import SectionIn
     base = dict(section_id="s", concept_id="c", time_spent_seconds=1, content_progression_pct=10)
+    assert SectionIn(**base).tab_hidden_count is None
+    assert SectionIn(**base, tab_hidden_count=0).tab_hidden_count == 0
     assert SectionIn(**base).active_time_seconds is None
     assert SectionIn(**base, active_time_seconds=0).active_time_seconds == 0
     with pytest.raises(ValidationError):

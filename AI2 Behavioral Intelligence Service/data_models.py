@@ -39,8 +39,8 @@ class Section:
     background_count: int | None
     total_background_seconds: float | None
     micro_challenges: list[MicroChallenge] = field(default_factory=list)
-    # Browser tab visibility events; included in the disengagement signal.
-    tab_hidden_count: int = 0
+    # None means tab visibility telemetry was unavailable; 0 means measured zero.
+    tab_hidden_count: int | None = None
     # P2: seconds the learner was actually active in this section
     # (foreground + recent input). None = not reported by the backend.
     active_time_seconds: float | None = None
@@ -69,7 +69,7 @@ class Section:
             background_count=data.get("background_count"),
             total_background_seconds=data.get("total_background_seconds"),
             micro_challenges=mcqs,
-            tab_hidden_count=data.get("tab_hidden_count", 0),
+            tab_hidden_count=data.get("tab_hidden_count"),
             active_time_seconds=data.get("active_time_seconds"),
         )
 

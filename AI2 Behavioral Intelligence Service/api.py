@@ -57,10 +57,10 @@ class SectionIn(BaseModel):
     background_count: int | None = Field(default=None, ge=0)
     total_background_seconds: float | None = Field(default=None, ge=0)
     micro_challenges: list[MicroChallengeIn] = []
-    tab_hidden_count: int = Field(
-        default=0,
+    tab_hidden_count: int | None = Field(
+        default=None,
         ge=0,
-        description="Number of times the browser tab became hidden; contributes to disengagement signals.",
+        description="Optional browser tab hidden count. Null means unavailable; 0 means measured and no hidden events.",
     )
     active_time_seconds: float | None = Field(
         default=None,

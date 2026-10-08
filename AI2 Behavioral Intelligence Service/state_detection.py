@@ -45,11 +45,21 @@ def _normal_evidence_factor(features: dict) -> float:
         features.get("scroll_speed") is not None
         or features.get("scroll_pattern") is not None,
         features.get("interaction") is not None,
-        features.get("disengagement") is not None,
+        features.get("disengagement") is not None
+        or features.get("tab_hidden_count") is not None,
         features.get("mcq_accuracy") is not None
         or features.get("mcq_response_time") is not None,
     )
     return sum(observed_domains) / len(observed_domains)
+
+
+def _skimming_support_count(features: dict) -> int:
+    """Count independent positive signals supporting a SKIMMING result."""
+    return sum((
+        features.get("scroll_speed") == "FAST",
+        features.get("mcq_accuracy") == "LOW",
+        features.get("mcq_response_time") == "TOO_FAST",
+    ))
 
 # Explicit tie-breaking priority — see test_scenarios.md Edge Case C.
 # If two states score equally, the one listed FIRST wins.
@@ -211,6 +221,8 @@ def detect_state(features: dict) -> dict:
         confidence = rule_match_score
         if best_state in ("SKIMMING", "WEAK_UNDERSTANDING") and has_mcq:
             confidence = round(rule_match_score * _mcq_evidence_factor(mcq_count), 2)
+        if best_state == "SKIMMING" and _skimming_support_count(features) <= 1:
+            confidence = min(confidence, 0.6)
         return {"state": best_state, "confidence": confidence, "rule_match_score": rule_match_score}
     else:
         # A low concern score is not proof of focus when the underlying

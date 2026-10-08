@@ -39,6 +39,7 @@ def test_missing_keys_are_none_not_zero():
     assert s.total_background_seconds is None
     assert s.scroll_speed_avg_px_per_sec is None
     assert s.scroll_direction_changes is None
+    assert s.tab_hidden_count is None
 
 
 def test_missing_vs_reported_zero_behave_differently():
@@ -50,6 +51,17 @@ def test_missing_vs_reported_zero_behave_differently():
     assert zero["features_used"]["interaction"] == "NONE"
     assert missing["state"] != "DISTRACTION_DISENGAGEMENT"
     assert zero["state"] == "DISTRACTION_DISENGAGEMENT"   # 0 interactions for 120s
+
+
+def test_tab_hidden_missing_and_zero_are_distinct():
+    base = {"section_id": "s", "concept_id": "c", "time_spent_seconds": 30,
+            "content_progression_pct": 80}
+    missing = extract_features(Section.from_dict(base))
+    reported_zero = extract_features(Section.from_dict(dict(base, tab_hidden_count=0)))
+    assert missing["tab_hidden_count"] is None
+    assert missing["disengagement"] is None
+    assert reported_zero["tab_hidden_count"] == 0
+    assert reported_zero["disengagement"] == "FOCUSED"
 
 
 # ---------------- Task 2: MCQ evidence ----------------
@@ -69,6 +81,12 @@ def test_one_fast_wrong_answer_plus_fast_scroll_gets_no_mcq_contribution():
     without = detect_state(extract_features(sec(**fast)))
     with_one = detect_state(extract_features(sec(micro_challenges=mcqs(1, rt=1), **fast)))
     assert with_one == without   # the single MCQ changed nothing
+
+
+def test_single_fast_scroll_skimming_confidence_is_capped():
+    result = analyze_section(sec(scroll_speed_avg_px_per_sec=500))
+    assert result["state"] == "SKIMMING"
+    assert result["confidence"] == 0.6
 
 
 def test_enough_evidence_activates_with_scaled_confidence():
