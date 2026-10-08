@@ -10,6 +10,7 @@ Content is assumed English-only (per project decision) — no language branching
 """
 
 import os
+import state_detection  # MIN_MCQ_EVIDENCE is read at call time
 from data_models import Section, MicroChallenge, effective_time_seconds
 
 # ---------------------------------------------------------------------------
@@ -297,6 +298,11 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
         else None
     )
     eff_time = effective_time_seconds(section)
+    # P1: below MIN_MCQ_EVIDENCE observations the MCQ signal is UNAVAILABLE
+    # (None) for everything downstream (state detection AND focus score),
+    # not only for state activation. "mcq_count" still reports how many
+    # observations existed.
+    mcq_enough = total_mcq >= state_detection.MIN_MCQ_EVIDENCE
 
     return {
         "scroll_speed": classify_scroll_speed(section.scroll_speed_avg_px_per_sec),
@@ -307,8 +313,8 @@ def extract_features(section: Section, mcq_metric: str | None = None) -> dict[st
         "progression": classify_progression(section.content_progression_pct),
         "revisit": classify_revisit(section.section_revisit_count),
         "interaction": classify_interaction(section.interaction_count, eff_time),
-        "mcq_accuracy": classify_mcq_accuracy(correct_mcq, total_mcq),
-        "mcq_response_time": classify_response_time(avg_response_time),
+        "mcq_accuracy": classify_mcq_accuracy(correct_mcq, total_mcq) if mcq_enough else None,
+        "mcq_response_time": classify_response_time(avg_response_time) if mcq_enough else None,
         "mcq_count": total_mcq,
         "disengagement": classify_disengagement(
             section.background_count, section.total_background_seconds

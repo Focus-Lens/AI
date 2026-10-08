@@ -67,7 +67,12 @@ def test_scenario_2_skimming():
         content_progression_pct=100,
         section_revisit_count=0,
         interaction_count=0,
-        micro_challenges=[{"question_id": "Q1", "response_time_seconds": 2, "is_correct": False}],
+        # P1: MIN_MCQ_EVIDENCE=3 -> need >= 3 observations for the MCQ signal to count
+        micro_challenges=[
+            {"question_id": "Q1", "response_time_seconds": 2, "is_correct": False},
+            {"question_id": "Q2", "response_time_seconds": 2, "is_correct": False},
+            {"question_id": "Q3", "response_time_seconds": 2, "is_correct": False},
+        ],
     )
     result = analyze_section(section)
 
@@ -86,12 +91,19 @@ def test_scenario_3_weak_understanding():
         content_progression_pct=100,
         section_revisit_count=0,
         interaction_count=2,
-        micro_challenges=[{"question_id": "Q1", "response_time_seconds": 10, "is_correct": False}],
+        # P1: 3 observations = minimum evidence
+        micro_challenges=[
+            {"question_id": "Q1", "response_time_seconds": 10, "is_correct": False},
+            {"question_id": "Q2", "response_time_seconds": 10, "is_correct": False},
+            {"question_id": "Q3", "response_time_seconds": 10, "is_correct": False},
+        ],
     )
     result = analyze_section(section)
 
     assert result["state"] == "WEAK_UNDERSTANDING"
-    assert result["confidence"] == 1.0
+    # P1: confidence is scaled by evidence (3 of 6 for full) -> 1.0 * 0.5
+    assert result["rule_match_score"] == 1.0
+    assert result["confidence"] == 0.5
     assert result["recommendedAction"] == "SHOW_EXPLANATION"
 
 

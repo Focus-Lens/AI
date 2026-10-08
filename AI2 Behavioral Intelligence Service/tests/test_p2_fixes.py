@@ -1,4 +1,7 @@
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("AI2_AUTH_DISABLED", "true")  # api.py guards at import
 
 import pytest

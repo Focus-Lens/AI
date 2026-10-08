@@ -59,13 +59,14 @@ class Section:
             section_start_time=data.get("section_start_time", 0),
             section_end_time=data.get("section_end_time", 0),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
-            scroll_speed_avg_px_per_sec=data.get("scroll_speed_avg_px_per_sec", 0.0),
-            scroll_direction_changes=data.get("scroll_direction_changes", 0),
+            # P1: a MISSING key means "telemetry not reported" (None), never 0.
+            scroll_speed_avg_px_per_sec=data.get("scroll_speed_avg_px_per_sec"),
+            scroll_direction_changes=data.get("scroll_direction_changes"),
             content_progression_pct=data.get("content_progression_pct", 0.0),
             section_revisit_count=data.get("section_revisit_count", 0),
-            interaction_count=data.get("interaction_count", 0),
-            background_count=data.get("background_count", 0),
-            total_background_seconds=data.get("total_background_seconds", 0.0),
+            interaction_count=data.get("interaction_count"),
+            background_count=data.get("background_count"),
+            total_background_seconds=data.get("total_background_seconds"),
             micro_challenges=mcqs,
             tab_hidden_count=data.get("tab_hidden_count", 0),
             active_time_seconds=data.get("active_time_seconds"),
@@ -133,7 +134,7 @@ class WindowHistoryItem:
     debounced `recommended_action` and never a SUPPRESSED marker. The AI
     does not use it for trend/escalation; it is carried for logging only."""
     window_index: int
-    focus_score: int
+    focus_score: int | None  # None = empty window; ignored by trend/low-score logic
     state: str
     dominant_action: str  # RAW action (pre-debounce), see class docstring
     understanding_score: int | None = None
@@ -142,7 +143,7 @@ class WindowHistoryItem:
     def from_dict(cls, data: dict) -> "WindowHistoryItem":
         return cls(
             window_index=data["window_index"],
-            focus_score=data["focus_score"],
+            focus_score=data.get("focus_score"),
             state=data["state"],
             dominant_action=data["dominant_action"],
             understanding_score=data.get("understanding_score"),

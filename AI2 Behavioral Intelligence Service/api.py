@@ -69,6 +69,23 @@ class SectionIn(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _validate_section_times(self):
+        if self.section_end_time < self.section_start_time:
+            raise ValueError("section_end_time must be >= section_start_time")
+        duration_s = (self.section_end_time - self.section_start_time) / 1000
+        if duration_s > MAX_SECTION_DURATION_SECONDS:
+            raise ValueError(
+                f"section duration ({duration_s}s) exceeds max allowed "
+                f"({MAX_SECTION_DURATION_SECONDS}s)"
+            )
+        if self.time_spent_seconds > MAX_SECTION_DURATION_SECONDS:
+            raise ValueError(
+                f"time_spent_seconds ({self.time_spent_seconds}) exceeds max allowed "
+                f"({MAX_SECTION_DURATION_SECONDS}s)"
+            )
+        return self
+
 
 class SessionIn(BaseModel):
     user_id: str
@@ -155,7 +172,7 @@ def require_service_key(x_service_key: str | None = Header(default=None, alias="
         # the env var being cleared after the process started.
         raise HTTPException(status_code=500, detail="AI2_SERVICE_KEY not configured")
 
-    if x_service_key is None or not hmac.compare_digest(x_service_key, service_key):
+    if x_service_key is None or not hmac.compare_digest(x_service_key.encode("utf-8"), service_key.encode("utf-8")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Service-Key")
 
 
