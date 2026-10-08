@@ -9,8 +9,15 @@ This is what makes the system explainable and reproducible.
 Content is assumed English-only (per project decision) — no language branching.
 """
 
+import os
 from data_models import Section
 
+# ---------------------------------------------------------------------------
+# MCQ accuracy metric selection (Task 5 — configurable, product decision
+# pending; see AI2 fix summary). Default preserves pre-existing behaviour.
+# ---------------------------------------------------------------------------
+MCQ_METRIC = os.environ.get("AI2_MCQ_METRIC", "attempt_accuracy")
+_VALID_MCQ_METRICS = {"attempt_accuracy", "first_attempt_accuracy", "final_answer_accuracy"}
 
 # ---------------------------------------------------------------------------
 # 1. Reading speed (English-only content — see feature_thresholds.md §1)
@@ -137,7 +144,13 @@ def classify_response_time(avg_response_time_seconds: float | None) -> str | Non
 # ---------------------------------------------------------------------------
 # 9. Disengagement / background behavior
 # ---------------------------------------------------------------------------
-def classify_disengagement(background_count: int, total_background_seconds: float) -> str:
+def classify_disengagement(background_count: int | None, total_background_seconds: float | None) -> str | None:
+    """Returns None (unknown) when either half of this signal pair is
+    missing — a partial reading (e.g. count but no duration) is not enough
+    to classify disengagement severity."""
+    if background_count is None or total_background_seconds is None:
+        return None
+
     if background_count == 0:
         return "FOCUSED"
     elif background_count <= 2 and total_background_seconds < 30:
@@ -145,26 +158,100 @@ def classify_disengagement(background_count: int, total_background_seconds: floa
     else:
         return "SIGNIFICANT_DISTRACTION"
 
+# ---------------------------------------------------------------------------
+# 10. MCQ accuracy reduction — metric is configurable (Task 5)
+# ---------------------------------------------------------------------------
+def compute_mcq_accuracy_counts(
+    micro_challenges: list[MicroChallenge], metric: str | None = None
+) -> tuple[int, int]:
+    """
+    Reduces a section's raw micro-challenge attempts into (correct_count,
+    total_count) to be fed into classify_mcq_accuracy(). The reduction
+    strategy is controlled by `metric` (defaults to the module-level
+    MCQ_METRIC, i.e. the AI2_MCQ_METRIC env var):
+
+      - "attempt_accuracy" (default, preserves original behaviour):
+        every recorded attempt counts individually. correct_count = number
+        of attempts with is_correct=True; total_count = number of attempts.
+        A student who retries the same question 3 times contributes 3
+        data points, so a late correct answer does not erase earlier wrong
+        ones from the signal.
+
+      - "first_attempt_accuracy": only the FIRST recorded attempt per
+        distinct question_id counts; retries are ignored. Measures raw,
+        unaided understanding at first exposure. Assumes `micro_challenges`
+        is given in chronological attempt order (the Frontend must send it
+        that way for this metric to be meaningful — there is no timestamp
+        field on MicroChallenge to verify this independently).
+
+      - "final_answer_accuracy": only the LAST recorded attempt per
+        distinct question_id counts. Measures the student's end state per
+        question after any retries ("did they eventually get it").
+
+    NOTE: none of these three is identical to the Backend Reports page's
+    definition ("distinct questions with at least one correct answer,
+    ever"), which is closer to "best-of" than "first" or "final". That
+    mismatch is a product decision, not something this function resolves
+    silently — see the AI2 fix summary (Task 5) for the discussion.
+    """
+    if metric is None:
+        metric = MCQ_METRIC
+    if metric not in _VALID_MCQ_METRICS:
+        raise ValueError(f"Unknown MCQ_METRIC: {metric!r}; expected one of {_VALID_MCQ_METRICS}")
+
+    if not micro_challenges:
+        return 0, 0
+
+    if metric == "attempt_accuracy":
+        total = len(micro_challenges)
+        correct = sum(1 for c in micro_challenges if c.is_correct)
+        return correct, total
+
+    # "first_attempt_accuracy" / "final_answer_accuracy": one attempt per
+    # distinct question_id, preserving first-seen order of questions.
+    by_question: dict[str, list[MicroChallenge]] = {}
+    for c in micro_challenges:
+        by_question.setdefault(c.question_id, []).append(c)
+
+    if metric == "first_attempt_accuracy":
+        chosen = [attempts[0] for attempts in by_question.values()]
+    else:  # final_answer_accuracy
+        chosen = [attempts[-1] for attempts in by_question.values()]
+
+    total = len(chosen)
+    correct = sum(1 for c in chosen if c.is_correct)
+    return correct, total
+
 
 # ---------------------------------------------------------------------------
 # Top-level: build the full feature vector for one Section
 # ---------------------------------------------------------------------------
-def extract_features(section: Section) -> dict[str, str | None]:
+def extract_features(section: Section, mcq_metric: str | None = None) -> dict[str, str | int | None]:
     """
     Runs every classify_* function against a Section and returns the
     combined feature vector, matching the shape in feature_thresholds.md §10.
 
     MCQ-dependent features (mcq_accuracy, mcq_response_time) are set to None
     when the section has no micro_challenges — this is NOT the same as a
-    "bad" classification, it means "not applicable". Downstream layers
-    (state_detection.py, focus_score.py) must check for None and exclude
-    these from their calculations rather than treating None as a category.
+    "bad" classification, it means "not applicable". Non-MCQ behavioral
+    features (scroll_speed, scroll_pattern, interaction, disengagement) can
+    now ALSO be None, when the corresponding telemetry was not reported at
+    all by the Frontend (as opposed to a reported value of 0). Downstream
+    layers (state_detection.py, focus_score.py) must check for None and
+    exclude these from their calculations rather than treating None as a
+    category or as zero.
+
+    `mcq_metric` overrides MCQ_METRIC for this call only (mainly for tests);
+    production code should rely on the AI2_MCQ_METRIC env var instead.
+
+    The returned "mcq_count" is the number of MCQ observations that fed
+    mcq_accuracy under the active metric (after any first/final dedup) —
+    state_detection.py uses it as the evidence count for MIN_MCQ_EVIDENCE.
     """
-    total_mcq = len(section.micro_challenges)
-    correct_mcq = sum(1 for c in section.micro_challenges if c.is_correct)
+    correct_mcq, total_mcq = compute_mcq_accuracy_counts(section.micro_challenges, metric=mcq_metric)
     avg_response_time = (
-        sum(c.response_time_seconds for c in section.micro_challenges) / total_mcq
-        if total_mcq > 0
+        sum(c.response_time_seconds for c in section.micro_challenges) / len(section.micro_challenges)
+        if section.micro_challenges
         else None
     )
 
@@ -181,6 +268,7 @@ def extract_features(section: Section) -> dict[str, str | None]:
         ),
         "mcq_accuracy": classify_mcq_accuracy(correct_mcq, total_mcq),
         "mcq_response_time": classify_response_time(avg_response_time),
+        "mcq_count": total_mcq,
         "disengagement": classify_disengagement(
             section.background_count, section.total_background_seconds
         ),

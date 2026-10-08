@@ -22,12 +22,20 @@ ADJUSTMENTS = {
 
 
 def base_score(features: dict) -> float:
+    # scroll_pattern / interaction / disengagement can now be None
+    # (missing telemetry, not a reported zero) — skip the adjustment
+    # entirely rather than crashing on ADJUSTMENTS[...][None] or silently
+    # treating missing data as the "best"/"worst" category. revisit and
+    # progression remain required fields and are never None.
     score = 100
     # score += ADJUSTMENTS["reading_speed"][features["reading_speed"]]                              # DELETED!
-    score += ADJUSTMENTS["scroll_pattern"][features["scroll_pattern"]]
+    if features.get("scroll_pattern") is not None:
+        score += ADJUSTMENTS["scroll_pattern"][features["scroll_pattern"]]
     score += ADJUSTMENTS["revisit"][features["revisit"]]
-    score += ADJUSTMENTS["interaction"][features["interaction"]]
-    score += ADJUSTMENTS["disengagement"][features["disengagement"]]
+    if features.get("interaction") is not None:
+        score += ADJUSTMENTS["interaction"][features["interaction"]]
+    if features.get("disengagement") is not None:
+        score += ADJUSTMENTS["disengagement"][features["disengagement"]]
     score += ADJUSTMENTS["progression"][features["progression"]]
 
     if features.get("mcq_accuracy") is not None:
@@ -66,7 +74,7 @@ def compute_focus_score(features: dict, state: str, confidence: float) -> int:
 
 
 # ---------------------------------------------------------------------------
-# NEW: Window-level aggregation (duration-weighted)
+# Window-level aggregation (duration-weighted)
 # ---------------------------------------------------------------------------
 
 def weighted_window_score(section_results: list[dict], sections: list) -> int:

@@ -30,13 +30,14 @@ class Section:
     section_start_time: int
     section_end_time: int
     time_spent_seconds: float
-    scroll_speed_avg_px_per_sec: float
-    scroll_direction_changes: int
+    #now — None means "telemetry not reported", 0 means "reported, genuinely zero"
+    scroll_speed_avg_px_per_sec: float | None
+    scroll_direction_changes: int | None
     content_progression_pct: float
     section_revisit_count: int
-    interaction_count: int
-    background_count: int
-    total_background_seconds: float
+    interaction_count: int | None
+    background_count: int | None
+    total_background_seconds: float | None
     micro_challenges: list[MicroChallenge] = field(default_factory=list)
     tab_hidden_count: int = 0
 

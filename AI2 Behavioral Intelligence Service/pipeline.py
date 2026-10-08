@@ -37,6 +37,7 @@ def analyze_section(section: Section) -> dict:
         "concept_id": section.concept_id,
         "state": state_result["state"],
         "confidence": state_result["confidence"],
+        "rule_match_score": state_result["rule_match_score"],
         "focusScore": score,
         "recommendedAction": action,
         "features_used": features,

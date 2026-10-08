@@ -12,12 +12,24 @@ Interactive docs:
     http://localhost:8000/docs
 """
 
+import hmac
+import os
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from data_models import SessionPayload, AnalysisWindow
 from pipeline import analyze_session, analyze_window
 
+
+# ---------------------------------------------------------------------------
+# All *_start / *_end fields are epoch milliseconds, matching the rest of
+# the schema. These ceilings are generous on purpose — they exist to catch
+# obviously-broken payloads (e.g. a swapped start/end, or a stuck client
+# clock), not to police realistic session lengths.
+MAX_SECTION_DURATION_SECONDS = int(os.environ.get("AI2_MAX_SECTION_DURATION_SECONDS", 4 * 60 * 60))       # 4h
+MAX_SESSION_DURATION_MS = int(os.environ.get("AI2_MAX_SESSION_DURATION_MS", 12 * 60 * 60 * 1000))         # 12h
+MAX_WINDOW_DURATION_MS = int(os.environ.get("AI2_MAX_WINDOW_DURATION_MS", 30 * 60 * 1000))                # 30min
 
 # ---------------------------------------------------------------------------
 # 1. Pydantic request models
@@ -35,13 +47,17 @@ class SectionIn(BaseModel):
     section_start_time: int = 0
     section_end_time: int = 0
     time_spent_seconds: float = Field(ge=0)
-    scroll_speed_avg_px_per_sec: float = Field(ge=0, default=0.0)
-    scroll_direction_changes: int = Field(ge=0, default=0)
+    #None = telemetry not reported, 0 = reported and genuinely
+    # zero. These used to default to 0.0/0, silently collapsing that
+    # distinction into "measured zero" (which could wrongly look like
+    # disengagement). ge=0 still applies to any value that IS provided.
+    scroll_speed_avg_px_per_sec: float | None = Field(default=None, ge=0)
+    scroll_direction_changes: int | None = Field(default=None, ge=0)
     content_progression_pct: float = Field(ge=0, le=100)
     section_revisit_count: int = Field(ge=0, default=0)
-    interaction_count: int = Field(ge=0, default=0)
-    background_count: int = Field(ge=0, default=0)
-    total_background_seconds: float = Field(ge=0, default=0.0)
+    interaction_count: int | None = Field(default=None, ge=0)
+    background_count: int | None = Field(default=None, ge=0)
+    total_background_seconds: float | None = Field(default=None, ge=0)
     micro_challenges: list[MicroChallengeIn] = []
     tab_hidden_count: int = 0
 
@@ -53,10 +69,21 @@ class SessionIn(BaseModel):
     session_end: int
     sections: list[SectionIn]
 
+    @model_validator(mode="after")
+    def _validate_session_times(self):
+        if self.session_end < self.session_start:
+            raise ValueError("session_end must be >= session_start")
+        duration_ms = self.session_end - self.session_start
+        if duration_ms > MAX_SESSION_DURATION_MS:
+            raise ValueError(
+                f"session duration ({duration_ms}ms) exceeds max allowed "
+                f"({MAX_SESSION_DURATION_MS}ms)"
+            )
+        return self
 
 class WindowHistoryItemIn(BaseModel):
     window_index: int
-    focus_score: int = Field(ge=0, le=100)
+    focus_score: int | None = Field(default=None, ge=0, le=100)
     state: str
     dominant_action: str
     understanding_score: int | None = Field(default=None, ge=0, le=100)
@@ -72,7 +99,50 @@ class AnalysisWindowIn(BaseModel):
     sections: list[SectionIn] = []
     history: list[WindowHistoryItemIn] = []
 
+    @model_validator(mode="after")
+    def _validate_window_times(self):
+        if self.window_end < self.window_start:
+            raise ValueError("window_end must be >= window_start")
+        duration_ms = self.window_end - self.window_start
+        if duration_ms > MAX_WINDOW_DURATION_MS:
+            raise ValueError(
+                f"window duration ({duration_ms}ms) exceeds max allowed "
+                f"({MAX_WINDOW_DURATION_MS}ms)"
+            )
+        return self
 
+
+# ---------------------------------------------------------------------------
+# 1b. Service-to-service authentication 
+# ---------------------------------------------------------------------------
+# Fail clearly at import (= startup, for this single-process service) if no
+# key is configured and auth wasn't explicitly disabled for local dev.
+_AI2_AUTH_DISABLED_AT_STARTUP = os.environ.get("AI2_AUTH_DISABLED", "false").lower() == "true"
+if not _AI2_AUTH_DISABLED_AT_STARTUP and not os.environ.get("AI2_SERVICE_KEY"):
+    raise RuntimeError(
+        "AI2_SERVICE_KEY is not set. Set it to a shared secret the .NET "
+        "backend will also send, or set AI2_AUTH_DISABLED=true explicitly "
+        "for local development only."
+    )
+
+
+def require_service_key(x_service_key: str | None = Header(default=None, alias="X-Service-Key")) -> None:
+    """FastAPI dependency guarding the two analyze endpoints. Reads env vars
+    fresh on every call (rather than caching at import time) so tests can
+    toggle AI2_AUTH_DISABLED / AI2_SERVICE_KEY per-test with monkeypatch."""
+    if os.environ.get("AI2_AUTH_DISABLED", "false").lower() == "true":
+        return
+
+    service_key = os.environ.get("AI2_SERVICE_KEY")
+    if not service_key:
+        # Startup guard above should prevent this; defend anyway against
+        # the env var being cleared after the process started.
+        raise HTTPException(status_code=500, detail="AI2_SERVICE_KEY not configured")
+
+    if x_service_key is None or not hmac.compare_digest(x_service_key, service_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Service-Key")
+
+    
 # ---------------------------------------------------------------------------
 # 2. FastAPI app
 # ---------------------------------------------------------------------------
