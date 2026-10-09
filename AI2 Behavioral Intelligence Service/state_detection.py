@@ -53,13 +53,18 @@ def _normal_evidence_factor(features: dict) -> float:
     return sum(observed_domains) / len(observed_domains)
 
 
-def _skimming_support_count(features: dict) -> int:
-    """Count independent positive signals supporting a SKIMMING result."""
-    return sum((
-        features.get("scroll_speed") == "FAST",
-        features.get("mcq_accuracy") == "LOW",
-        features.get("mcq_response_time") == "TOO_FAST",
-    ))
+def _skimming_support_count(features: dict, has_mcq: bool) -> int:
+    """Count positive SKIMMING signals backed by sufficient telemetry.
+
+    MCQ-derived signals count only when the configured minimum number of
+    MCQ observations has been reached. This prevents one fast-scroll signal
+    (or one unsupported MCQ observation) from activating SKIMMING by itself.
+    """
+    count = int(features.get("scroll_speed") == "FAST")
+    if has_mcq:
+        count += int(features.get("mcq_accuracy") == "LOW")
+        count += int(features.get("mcq_response_time") == "TOO_FAST")
+    return count
 
 # Explicit tie-breaking priority — see test_scenarios.md Edge Case C.
 # If two states score equally, the one listed FIRST wins.
@@ -102,6 +107,12 @@ def score_content_difficulty(features: dict, has_mcq: bool) -> float:
 
 
 def score_skimming(features: dict, has_mcq: bool) -> float:
+    # Evidence gate: at least two positive signals are required. Without this
+    # gate, a sole applicable condition (for example FAST scrolling with no
+    # usable MCQ evidence) normalizes to 1.0 and falsely activates SKIMMING.
+    if _skimming_support_count(features, has_mcq) < 2:
+        return 0.0
+
     true_w = []
     applicable_w = []
 
@@ -221,8 +232,6 @@ def detect_state(features: dict) -> dict:
         confidence = rule_match_score
         if best_state in ("SKIMMING", "WEAK_UNDERSTANDING") and has_mcq:
             confidence = round(rule_match_score * _mcq_evidence_factor(mcq_count), 2)
-        if best_state == "SKIMMING" and _skimming_support_count(features) <= 1:
-            confidence = min(confidence, 0.6)
         return {"state": best_state, "confidence": confidence, "rule_match_score": rule_match_score}
     else:
         # A low concern score is not proof of focus when the underlying

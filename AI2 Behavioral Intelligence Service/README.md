@@ -4,6 +4,8 @@ Analyzes learner session behavior (reading speed, scroll patterns, micro-challen
 
 Rule-based / weighted-signal methodology — no ML/LLM. Fully explainable and reproducible. Owned by: Hossam (AI Engineer).
 
+> **Integration naming note:** In the current FocusLens integration, this Python behavioral-analysis service is called **AI 1** to distinguish it from the separate .NET learning-AI project. The existing `/ai2/...` route prefix and `AI2_*` environment variable names are retained for compatibility; do not rename them without coordinating with Backend.
+
 ---
 
 ## 1. Quick Start
@@ -16,10 +18,17 @@ source venv/bin/activate      # on Windows: venv\Scripts\activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the service
+# 3. Configure service-to-service authentication.
+# Use the SAME secret in the main .NET Backend (AI2_SERVICE_KEY).
+export AI2_SERVICE_KEY="replace-with-a-long-random-secret"
+# Local-only alternative when testing without the Backend:
+# export AI2_AUTH_DISABLED=true
+# Never disable authentication in a deployed environment.
+
+# 4. Run the service
 uvicorn api:app --reload --port 8000
 
-# 4. Open the interactive API docs in your browser
+# 5. Open the interactive API docs in your browser
 #    http://localhost:8000/docs
 ```
 
@@ -29,7 +38,7 @@ uvicorn api:app --reload --port 8000
 pytest tests/ -v
 ```
 
-Run the complete test suite after any change to a threshold, weight, or scoring rule. The current suite has 82 tests covering batch analysis, real-time windows, and boundary cases.
+Run the complete test suite after any change to a threshold, weight, or scoring rule. The current suite has 83 tests covering batch analysis, real-time windows, and boundary cases.
 
 ---
 
@@ -67,12 +76,15 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
         "section_id": "S003",
         "concept_id": "C008",
         "time_spent_seconds": 60,
+        "scroll_speed_avg_px_per_sec": 500,
         "scroll_direction_changes": 1,
         "content_progression_pct": 95,
         "section_revisit_count": 0,
         "interaction_count": 2,
         "micro_challenges": [
-          {"question_id": "Q1", "response_time_seconds": 2, "is_correct": false}
+          {"question_id": "Q1", "response_time_seconds": 2, "is_correct": false},
+          {"question_id": "Q2", "response_time_seconds": 2, "is_correct": false},
+          {"question_id": "Q3", "response_time_seconds": 2, "is_correct": false}
         ],
         "background_count": 0,
         "total_background_seconds": 0
@@ -92,8 +104,8 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
       "section_id": "S003",
       "concept_id": "C008",
       "state": "SKIMMING",
-      "confidence": 0.8,
-      "focusScore": 63,
+      "confidence": 0.5,
+      "focusScore": 66,
       "recommendedAction": "SHOW_EXPLANATION",
       "features_used": { "...": "..." },
       "mcq_data_available": true
@@ -173,4 +185,4 @@ These are tracked in detail inside each doc above, summarized here for convenien
 - **Backend:** persists every window, owns session history, and derives session-level `focusQuality`, `focusState`, and `focusTrend` from persisted window results. The AI service does not aggregate or persist session-level metrics.
 - **Consumers:** Overview and Reports read the Backend's session-level metrics.
 
-Backend should calculate session `focusQuality` as the active-time-weighted mean of non-null window focus scores; `focusState` as the active-time-weighted dominant window state (severity order breaks ties); and `focusTrend` from chronological non-null window focus scores using the rule in `docs/trend_analysis.md`. Empty windows have null focus and do not contribute. Backend owns the persistence schema and retains window-level records for auditability.
+Backend should persist every returned `window_active_time_seconds` alongside the behavior-window record. It should calculate session `focusQuality` as the active-time-weighted mean of non-null window focus scores; `focusState` as the active-time-weighted dominant window state (severity order breaks ties); and `focusTrend` from chronological non-null window focus scores using the rule in `docs/trend_analysis.md`. Empty windows have null focus and zero active time, so they do not contribute. Backend owns the persistence schema and retains window-level records for auditability.

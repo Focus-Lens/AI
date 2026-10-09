@@ -51,18 +51,16 @@
   "section_revisit_count": 0,
   "interaction_count": 0,
   "micro_challenges": [
-    {
-      "question_id": "Q1",
-      "response_time_seconds": 2,
-      "is_correct": false
-    }
+    {"question_id": "Q1", "response_time_seconds": 2, "is_correct": false},
+    {"question_id": "Q2", "response_time_seconds": 2, "is_correct": false},
+    {"question_id": "Q3", "response_time_seconds": 2, "is_correct": false}
   ],
   "background_count": 0,
   "total_background_seconds": 0
 }
 ```
 
-**Expected:** `state=SKIMMING`, `features_used.mcq_accuracy == "LOW"`.
+**Expected:** `state=SKIMMING`, `features_used.mcq_accuracy == "LOW"`, `features_used.mcq_response_time == "TOO_FAST"`. At least three MCQ observations are required by the default evidence threshold, and fast scrolling alone is not sufficient.
 
 > **Note:** Previously also asserted `features_used.reading_speed == "VERY_FAST"` — removed in v0.3.
 

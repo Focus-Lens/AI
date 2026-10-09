@@ -83,10 +83,18 @@ def test_one_fast_wrong_answer_plus_fast_scroll_gets_no_mcq_contribution():
     assert with_one == without   # the single MCQ changed nothing
 
 
-def test_single_fast_scroll_skimming_confidence_is_capped():
+def test_single_fast_scroll_does_not_activate_skimming_or_intervention():
     result = analyze_section(sec(scroll_speed_avg_px_per_sec=500))
+    assert result["state"] == "NORMAL_FOCUSED"
+    assert result["recommendedAction"] == "CONTINUE"
+
+
+def test_skimming_still_activates_with_corroborating_evidence():
+    result = analyze_section(
+        sec(scroll_speed_avg_px_per_sec=500, micro_challenges=mcqs(3, correct=False, rt=1))
+    )
     assert result["state"] == "SKIMMING"
-    assert result["confidence"] == 0.6
+    assert result["confidence"] == 0.5
 
 
 def test_enough_evidence_activates_with_scaled_confidence():

@@ -52,7 +52,9 @@ score(state) =
 | **Max score (with MCQ)**                          |  **7** |
 | **Max score (no MCQ)**                            |  **2** |
 
-> **Note:** `reading_speed in [FAST, VERY_FAST]` was previously a weight-3 condition; it has been removed. Without MCQ data, `SKIMMING` now requires `scroll_speed == FAST` as the sole signal — its max score is 2, which is below the activation threshold (`0.4 × applicable? no — see §6`). This means `SKIMMING` is effectively undetectable in no-MCQ sections. **This is intentional** — skimming without any comprehension signal is indistinguishable from a fast-but-engaged reader. Flag for review.
+**Mandatory evidence gate:** `SKIMMING` requires at least two positive signals among `scroll_speed == FAST`, `mcq_accuracy == LOW`, and `mcq_response_time == TOO_FAST`. MCQ-derived signals count only after `MIN_MCQ_EVIDENCE` observations are available (default: 3). A lone fast-scroll signal is not sufficient to activate `SKIMMING`; without enough corroborating evidence, the detector must consider other supported states or fall back to `NORMAL_FOCUSED`.
+
+> **Note:** `reading_speed in [FAST, VERY_FAST]` was previously a weight-3 condition; it has been removed. The evidence gate is required because scores are normalized over applicable conditions: a single true condition could otherwise score `1.0` when it is the only applicable condition.
 
 ---
 
@@ -103,6 +105,7 @@ It represents "nothing concerning detected."
 
 ```python id="2zj7z5"
 ACTIVATION_THRESHOLD = 0.4  # minimum score to accept a non-default state
+MIN_MCQ_EVIDENCE = int(os.environ.get("AI2_MIN_MCQ_EVIDENCE", "3"))
 
 STATE_PRIORITY = [
     "DISTRACTION_DISENGAGEMENT",
@@ -113,7 +116,7 @@ STATE_PRIORITY = [
 
 
 def detect_state(features: dict) -> dict:
-    has_mcq = features.get("mcq_accuracy") is not None
+    has_mcq = (features.get("mcq_count") or 0) >= MIN_MCQ_EVIDENCE
 
     candidates = {
         "CONTENT_DIFFICULTY": score_content_difficulty(
@@ -151,6 +154,8 @@ def detect_state(features: dict) -> dict:
         }
 ```
 
+`score_skimming` returns `0.0` unless at least two positive support signals are present. MCQ accuracy and response-time signals are counted only when `mcq_count >= MIN_MCQ_EVIDENCE`; with the default threshold, fewer than three observations cannot corroborate a skimming classification. This activation gate is separate from confidence scaling: confidence capping is not used to prevent a weakly supported state from triggering an action.
+
 `normal_evidence_factor` is the fraction of observed signal domains among scrolling, interaction, app/tab focus, and MCQ performance. Missing values do not count. No telemetry yields confidence `0.0`; one observed domain contributes at most `0.25`; two domains at most `0.5`; and all four permit the full inverse-score confidence. This prevents missing data from being reported as certain focus.
 
 ---
@@ -161,11 +166,11 @@ Two different behaviors apply depending on the state:
 
 ### General Rule — `CONTENT_DIFFICULTY` and `SKIMMING`
 
-If a section has no `micro_challenges` entries, all MCQ-dependent conditions are **excluded** from both the numerator and denominator.
+If a section has fewer than `MIN_MCQ_EVIDENCE` observations (3 by default), MCQ-derived conditions are treated as unavailable for state activation. They do not count as positive or negative evidence.
 
 They are **NOT** treated as false/zero.
 
-This avoids unfairly penalizing a state whose evidence happens to rely partly on MCQ signals.
+For `SKIMMING`, this also means that a fast-scroll signal alone cannot pass the two-signal evidence gate. A fast-but-engaged reader must not be classified as skimming without corroborating evidence.
 
 ### Special Case — `WEAK_UNDERSTANDING`
 

@@ -8,11 +8,16 @@ Analyzes learner session behavior (scroll patterns, micro-challenge performance,
 Rule-based / weighted-signal methodology — no ML/LLM. Fully explainable and reproducible.
 Owned by: Hossam (AI Engineer).
 
+> **Integration naming note:** In the current FocusLens integration, this Python behavioral-analysis service is called **AI 1** to distinguish it from the separate .NET learning-AI project. The existing `/ai2/...` route prefix and `AI2_*` environment variable names are retained for compatibility; do not rename them without coordinating with Backend.
+
 ---
 
 ## 1. Quick Start
 
 ```bash
+# Run this from the repository root (AI2/)
+cd "AI2 Behavioral Intelligence Service"
+
 # 1. Create a virtual environment (recommended)
 python3 -m venv venv
 source venv/bin/activate      # on Windows: venv\Scripts\activate
@@ -20,10 +25,17 @@ source venv/bin/activate      # on Windows: venv\Scripts\activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the service
+# 3. Configure service-to-service authentication.
+# Use the SAME secret in the main .NET Backend (AI2_SERVICE_KEY).
+export AI2_SERVICE_KEY="replace-with-a-long-random-secret"
+# Local-only alternative when testing without the Backend:
+# export AI2_AUTH_DISABLED=true
+# Never disable authentication in a deployed environment.
+
+# 4. Run the service
 uvicorn api:app --reload --port 8000
 
-# 4. Open the interactive API docs in your browser
+# 5. Open the interactive API docs in your browser
 #    http://localhost:8000/docs
 ```
 
@@ -44,14 +56,20 @@ pytest tests/test_window_scenarios.py -v
 
 All scenarios should pass:
 
-* **8 end-of-session cases** (5 learning states + 3 edge cases) in `test_scenarios.py`
-* **~25 real-time cases** (weighted score, trend, debounce, escalation, empty window) in `test_window_scenarios.py`
+* `test_scenarios.py` — end-of-session state and edge-case scenarios
+* `test_p1_fixes.py` — missing telemetry semantics, MCQ evidence, timestamps, and authentication
+* `test_p2_fixes.py` — window weighting and boundary validation
+* `test_window_scenarios.py` — real-time window scoring, trend, debounce, escalation, and empty-window behavior
 
-Run both files after any change to a threshold, weight, or scoring rule.
+Run the complete `pytest tests/ -v` suite after any change to a threshold, weight, or scoring rule (83 tests in the reviewed version).
 
 ---
 
 ## 3. API Overview
+
+### Service-to-service authentication
+
+Both `/ai2/analyze-session` and `/ai2/analyze-window` require `X-Service-Key`. Configure the same secret as `AI2_SERVICE_KEY` in this service and in the calling .NET Backend. Missing or invalid keys return HTTP 401. `AI2_AUTH_DISABLED=true` is for local development only; never use it in a deployed environment.
 
 ### `GET /health`
 
@@ -61,15 +79,16 @@ Liveness check. Returns `{"status": "ok"}` if the service is running.
 
 **End-of-session batch endpoint.** Backend calls this **once, at the end of a session**, with the full session payload (all sections visited). Returns one result object per section.
 
-**Request body:** see [`docs/AI_Behavioral_Signals_Contract2.md`](./docs/AI_Behavioral_Signals_Contract2.md) for the full field reference.
+**Request body:** see [`docs/AI_Behavioral_Signals_Contract2.md`](./AI2%20Behavioral%20Intelligence%20Service/docs/AI_Behavioral_Signals_Contract2.md) for the full field reference.
 
-**Response body:** see [`docs/api_contract.md`](./docs/api_contract.md) §2 for the full field reference, including error handling for partial failures (§5).
+**Response body:** see [`docs/api_contract.md`](./AI2%20Behavioral%20Intelligence%20Service/docs/api_contract.md) §2 for the full field reference, including error handling for partial failures (§5).
 
 **Minimal example:**
 
 ```bash
 curl -X POST http://localhost:8000/ai2/analyze-session \
   -H "Content-Type: application/json" \
+  -H "X-Service-Key: $AI2_SERVICE_KEY" \
   -d '{
     "user_id": "usr_10293",
     "session_id": "sess_88392",
@@ -80,17 +99,15 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
         "section_id": "S003",
         "concept_id": "C008",
         "time_spent_seconds": 60,
-        "scroll_speed_avg_px_per_sec": 220.0,
+        "scroll_speed_avg_px_per_sec": 500.0,
         "scroll_direction_changes": 1,
         "content_progression_pct": 95,
         "section_revisit_count": 0,
         "interaction_count": 2,
         "micro_challenges": [
-          {
-            "question_id": "Q1",
-            "response_time_seconds": 2,
-            "is_correct": false
-          }
+          {"question_id": "Q1", "response_time_seconds": 2, "is_correct": false},
+          {"question_id": "Q2", "response_time_seconds": 2, "is_correct": false},
+          {"question_id": "Q3", "response_time_seconds": 2, "is_correct": false}
         ],
         "background_count": 0,
         "total_background_seconds": 0,
@@ -111,8 +128,8 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
       "section_id": "S003",
       "concept_id": "C008",
       "state": "SKIMMING",
-      "confidence": 0.8,
-      "focusScore": 56,
+      "confidence": 0.5,
+      "focusScore": 66,
       "recommendedAction": "SHOW_EXPLANATION",
       "features_used": {
         "...": "..."
@@ -127,7 +144,7 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
 
 **Real-time periodic endpoint (new).** Backend calls this **every ~5 minutes during an active session** (or earlier if the student closes the app). Returns a single window-level result with a debounced recommended action.
 
-**Request body:** `AnalysisWindow` — see [`docs/api_contract.md`](./docs/api_contract.md) §3 for the full field reference.
+**Request body:** `AnalysisWindow` — see [`docs/api_contract.md`](./AI2%20Behavioral%20Intelligence%20Service/docs/api_contract.md) §3 for the full field reference.
 
 **Key request fields:**
 
@@ -135,13 +152,14 @@ curl -X POST http://localhost:8000/ai2/analyze-session \
 * `history[]` — summaries of all previous windows (Backend owns this list)
 * `is_final` — `true` on the last call of a session (triggers debounce cleanup)
 
-**Response body:** see [`docs/api_contract.md`](./docs/api_contract.md) §4.
+**Response body:** see [`docs/api_contract.md`](./AI2%20Behavioral%20Intelligence%20Service/docs/api_contract.md) §4.
 
 **Minimal example:**
 
 ```bash
 curl -X POST http://localhost:8000/ai2/analyze-window \
   -H "Content-Type: application/json" \
+  -H "X-Service-Key: $AI2_SERVICE_KEY" \
   -d '{
     "user_id": "usr_10293",
     "session_id": "sess_88392",
@@ -154,7 +172,7 @@ curl -X POST http://localhost:8000/ai2/analyze-window \
         "section_id": "S003",
         "concept_id": "C008",
         "time_spent_seconds": 45.0,
-        "scroll_speed_avg_px_per_sec": 220.0,
+        "scroll_speed_avg_px_per_sec": 500.0,
         "scroll_direction_changes": 3,
         "content_progression_pct": 90.0,
         "section_revisit_count": 2,
@@ -189,6 +207,7 @@ curl -X POST http://localhost:8000/ai2/analyze-window \
   "session_id": "sess_88392",
   "window_index": 2,
   "window_focus_score": 58,
+  "window_active_time_seconds": 37.0,
   "window_state": "CONTENT_DIFFICULTY",
   "recommended_action": "SHOW_EXPLANATION",
   "raw_action": "SHOW_EXPLANATION",
@@ -211,7 +230,7 @@ curl -X POST http://localhost:8000/ai2/analyze-window \
 * `action_emitted == true` → show `recommended_action` to the learner.
 * `action_emitted == false` → **do not show anything**. `recommended_action` will literally be the string `"SUPPRESSED"`. Use `raw_action` for logging/analytics only.
 
-See [`docs/debounce.md`](./docs/debounce.md) for the full rule set (2-minute window, severity ordering, TTL cleanup).
+See [`docs/debounce.md`](./AI2%20Behavioral%20Intelligence%20Service/docs/debounce.md) for the full rule set (2-minute window, severity ordering, TTL cleanup).
 
 ### 3.2 Session Lifecycle (Backend's Responsibility)
 
@@ -229,39 +248,32 @@ AI2 does not enforce a cadence. Backend is expected to:
 
 ```text
 AI2/
-├── docs/                          # Full methodology documentation
-│   ├── adaptive_decision.md
-│   ├── AI_Behavioral_Signals_Contract2.md
-│   ├── api_contract.md
-│   ├── debounce.md                # NEW — debounce rules & lifecycle
-│   ├── feature_thresholds.md
-│   ├── focus_score.md
-│   ├── state_detection.md
-│   ├── test_scenarios.md          # End-of-session test reference
-│   ├── test_window_scenarios.md   # NEW — real-time test reference
-│   └── trend_analysis.md          # NEW — trend & escalation signals
-├── tests/
-│   ├── test_scenarios.py          # End-of-session regression tests (8)
-│   └── test_window_scenarios.py   # NEW — real-time regression tests (~25)
-├── adaptive_decision.py           # UPDATED — escalation rules
-├── api.py                         # FastAPI HTTP layer (2 endpoints)
-├── data_models.py                 # UPDATED — AnalysisWindow, WindowHistoryItem
-├── debounce.py                    # NEW — in-memory debounce store
-├── feature_extraction.py          # UPDATED — reading_speed removed
-├── focus_score.py                 # UPDATED — weighted_window_score()
-├── pipeline.py                    # UPDATED — analyze_window()
-├── state_detection.py             # UPDATED — reading_speed removed
-├── trend_analysis.py              # NEW — compute_trend + consecutive counters
-├── .gitignore
 ├── README.md
-└── requirements.txt
+└── AI2 Behavioral Intelligence Service/
+    ├── docs/                       # Methodology and API contracts
+    ├── tests/
+    │   ├── test_scenarios.py
+    │   ├── test_p1_fixes.py
+    │   ├── test_p2_fixes.py
+    │   └── test_window_scenarios.py
+    ├── adaptive_decision.py
+    ├── api.py                      # FastAPI HTTP layer (2 endpoints)
+    ├── data_models.py
+    ├── debounce.py
+    ├── feature_extraction.py
+    ├── focus_score.py
+    ├── pipeline.py
+    ├── state_detection.py
+    ├── trend_analysis.py
+    ├── README.md
+    └── requirements.txt
 ```
 
 ---
 
 ## 5. Methodology Documentation
 
-Each stage of the pipeline has a corresponding design doc in [`docs/`](./docs) — read these for the *why* behind every threshold, weight, and decision rule:
+Each stage of the pipeline has a corresponding design doc in [`docs/`](./AI2%20Behavioral%20Intelligence%20Service/docs) — read these for the *why* behind every threshold, weight, and decision rule:
 
 | Doc                                       | Covers                                                      |
 | ----------------------------------------- | ----------------------------------------------------------- |
@@ -325,12 +337,12 @@ These are tracked in detail inside each doc above, summarized here for convenien
 7. Confirm the ~5-minute cadence is Backend's responsibility and AI2 does not need to enforce it.
 8. Confirm whether `history[].dominant_action` should store the **raw** action or the **emitted** (post-debounce) action. Currently documented as raw.
 9. Confirm Backend will honour `action_emitted == false` by not showing any notification.
-10. Confirm session-level aggregation (e.g. the final report `focusScore`) is Backend's job. Current recommendation: **Backend aggregates** by taking a duration-weighted mean of the `window_focus_score` values it already has.
+10. **Session-level aggregation is Backend-owned.** Persist every window's `window_active_time_seconds` with its result; use it to calculate active-time-weighted session `focusQuality` and `focusState`, and derive `focusTrend` from chronological non-null window scores. Confirm product display thresholds with Backend/Product.
 
 ### Service Integration
 
 11. Final HTTP path/naming convention for `/ai2/analyze-session` (`/ai2/analyze-session` is a proposal).
-12. Service-to-service auth mechanism.
+12. **Service-to-service authentication is implemented:** both analysis endpoints require `X-Service-Key`, matched against `AI2_SERVICE_KEY`; `AI2_AUTH_DISABLED=true` is for local development only.
 13. Retry/timeout behavior expected if this service is slow or down. **Especially important for `/ai2/analyze-window`**: a missed window means a missed notification, not a corrupted session.
 
 ### Conventions
@@ -346,7 +358,7 @@ These are tracked in detail inside each doc above, summarized here for convenien
 * ☑ **Real-time unit tests written (~25 cases in `test_window_scenarios.py`)**
 * ☑ **`reading_speed` feature removed; all downstream modules updated**
 * ☑ **HTTP API implemented (FastAPI + Pydantic validation, 2 endpoints)**
-* □ **Confirm real-time test suite passes end-to-end (`pytest tests/ -v`)**
+* ☑ **Automated test suite passes (`pytest tests/ -v`): 83 tests in this reviewed version**
 * □ **Deployment configuration (Docker, hosting)** — not yet addressed, pending Backend/DevOps input
 * □ **Open Points above confirmed with Backend/Frontend**
 

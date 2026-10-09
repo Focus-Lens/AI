@@ -38,7 +38,7 @@ AI2 Service:
 
 1. Analyzes each section in the window (per-section pipeline)
 2. Computes a duration-weighted window focus score
-3. Picks the dominant state (most frequent, severity tie-break)
+3. Picks the dominant state by total effective active time per state (severity tie-break)
 4. Applies history-aware escalation (adaptive_decision.md §2)
 5. Passes the action through debounce (debounce.md)
 
@@ -72,6 +72,7 @@ Same shape as `SessionPayload` defined in `AI_Behavioral_Signals_Contract2.md`. 
 ```http
 POST /ai2/analyze-session
 Content-Type: application/json
+X-Service-Key: <shared-secret>
 
 Body: SessionPayload (see `AI_Behavioral_Signals_Contract2.md`)
 ```
@@ -89,17 +90,18 @@ Body: SessionPayload (see `AI_Behavioral_Signals_Contract2.md`)
       "section_id": "S003",
       "concept_id": "C008",
       "state": "SKIMMING",
-      "confidence": 0.8,
-      "focusScore": 68,
+      "confidence": 0.5,
+      "focusScore": 66,
       "recommendedAction": "SHOW_EXPLANATION",
       "features_used": {
-        "scroll_speed": "NORMAL",
+        "scroll_speed": "FAST",
         "scroll_pattern": "STABLE",
         "progression": "COMPLETE",
         "revisit": "NONE",
         "interaction": "NORMAL",
         "mcq_accuracy": "LOW",
         "mcq_response_time": "TOO_FAST",
+        "mcq_count": 3,
         "disengagement": "FOCUSED"
       },
       "mcq_data_available": true
@@ -135,6 +137,7 @@ Body: SessionPayload (see `AI_Behavioral_Signals_Contract2.md`)
 ```http
 POST /ai2/analyze-window
 Content-Type: application/json
+X-Service-Key: <shared-secret>
 
 Body: AnalysisWindow
 ```
@@ -222,7 +225,7 @@ Body: AnalysisWindow
   "session_id": "sess_88392",
   "window_index": 3,
   "window_focus_score": 68,
-  "window_active_time_seconds": 45.0,
+  "window_active_time_seconds": 37.0,
   "window_understanding_score": 50,
   "understanding_trend": "DECLINING",
   "window_state": "CONTENT_DIFFICULTY",
@@ -259,7 +262,7 @@ Body: AnalysisWindow
 | `window_active_time_seconds` | float | Sum of the effective active time for sections successfully analyzed in this window. Uses reported `active_time_seconds` when available, otherwise the existing effective-time fallback. Empty/unanalysable windows return `0.0`. |
 | `window_understanding_score` | integer (0-100) OR null | Percentage of MCQ attempts answered correctly in this window; null when there are no MCQ attempts. |
 | `understanding_trend` | enum | IMPROVING / STABLE / DECLINING, using only non-null understanding scores. |
-| `window_state`       | enum                      | Dominant state of the window (most frequent, severity tie-break).                                                             |
+| `window_state`       | enum                      | State with the largest sum of effective active time across analyzed sections; severity order breaks exact ties (and resolves all-zero durations). |
 | `recommended_action` | enum OR `"SUPPRESSED"`    | The action after debounce. If `action_emitted == false`, this is `"SUPPRESSED"` — Backend should **not** show a notification. |
 | `raw_action`         | enum                      | What the decision layer computed before debounce. Always a real action. For observability only.                               |
 | `action_emitted`     | boolean                   | `true` if the action passed debounce and should be shown.                                                                     |
