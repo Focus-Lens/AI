@@ -1,0 +1,11 @@
+# Copy to .env (never commit .env)
+GEMINI_API_KEY=paste_your_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+# MINIMAL | LOW | MEDIUM | HIGH | OFF
+GEMINI_THINKING=LOW
+# Shared secret the .NET backend sends in X-Service-Key
+CHAT_SERVICE_KEY=replace-with-a-long-random-secret
+# Local testing only, never in a deployed environment:
+# CHAT_AUTH_DISABLED=true
+# How long a study session stays in memory after the last question (seconds)
+CHAT_SESSION_TTL_SECONDS=10800
