@@ -51,6 +51,23 @@ def test_any_subject_is_allowed_in_prompt(fake_llm):
     assert "any other school subject are welcome" in fake_llm.calls[0]["system"]
 
 
+def test_reply_language_follows_latest_question_in_same_session(fake_llm):
+    session_id = "reply-language"
+    chat.start_session(session_id, "A primary key uniquely identifies a row in a table.")
+    questions = [
+        ("Explain what a database primary key is in simple terms.", "English"),
+        ("طب ليه مينفعش يتكرر؟", "Egyptian Arabic"),
+        ("Can you give another example?", "English"),
+    ]
+    for question, language in questions:
+        result = chat.chat(question, fake_llm, session_id=session_id)
+        assert result["blocked"] is False
+        system = fake_llm.calls[-1]["system"]
+        assert f"Answer the latest student message in {language}." in system
+
+    assert len(fake_llm.calls[-1]["contents"]) == 5  # two previous turns and the latest question
+
+
 def test_student_text_and_material_are_wrapped_as_data(fake_llm):
     chat.chat("سؤال في الدرس", fake_llm, material_text="Mitosis makes two cells.")
     last = fake_llm.calls[0]["contents"][-1]["parts"][0]["text"]
