@@ -1,6 +1,6 @@
 # Study Chatbot Service
 
-FocusLens study assistant. Answers **school-learning questions (any subject)** and **questions about using FocusLens**, in simple Egyptian Arabic. Anything else gets a fixed reply.
+FocusLens study assistant. Answers **school-learning questions (any subject)** and **questions about using FocusLens**. Replies follow the language of the latest question each turn, in clear English or simple Egyptian Arabic. Anything else gets a fixed reply.
 
 The backend sends the **lecture text once per study session**. For each question, the service finds the parts of the lecture related to it (RAG) and sends only those to Gemini, so **tokens per message stay about the same whether the lecture is 2 pages or 200**.
 

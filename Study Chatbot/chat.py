@@ -13,7 +13,7 @@ from typing import Protocol
 import config
 from gemini_client import LLMResult, Usage
 from prompts import KNOWLEDGE, REPLIES, system_prompt
-from retrieval import LectureIndex, format_chunks, is_overview
+from retrieval import LectureIndex, arabic_share, format_chunks, is_overview
 from sessions import Session, SessionStore, store as default_store
 
 CATEGORIES = ("app", "study", "other", "unsafe")
@@ -189,9 +189,12 @@ def chat(message: str, llm: LLM, session_id: str = "", history=None, subject: st
         f"<student_message>\n{message}\n</student_message>"
     contents.append({"role": "user", "parts": [{"text": last}]})
 
+    # Mixed-language questions use the model's reading of the main request.
+    reply_language = {0.0: "English", 1.0: "Egyptian Arabic"}.get(arabic_share(message))
     system = system_prompt(subject, bool(chunks),
                            lesson_title=session.lesson_title if session else "",
-                           grade=session.grade if session else "")
+                           grade=session.grade if session else "",
+                           reply_language=reply_language)
     r = llm.json(system, contents, SCHEMA)
     usage = Usage(r.usage.input + kw_usage.input, r.usage.output + kw_usage.output,
                   r.usage.total + kw_usage.total)  # the keyword request (if any) counts too
