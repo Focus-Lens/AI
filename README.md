@@ -1,5 +1,7 @@
 # AI2 — Behavioral Intelligence Service
 
+The FocusLens study chatbot now lives in [Focus-Lens/Chatbot](https://github.com/Focus-Lens/Chatbot).
+
 Analyzes learner session behavior (scroll patterns, micro-challenge performance, app engagement) and returns **two granularities** of output:
 
 * **Per-section** (end of session): detected learning state, focus score (0–100), and recommended adaptive action for each section.
